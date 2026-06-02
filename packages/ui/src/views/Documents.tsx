@@ -290,23 +290,25 @@ export function Documents() {
 
   function handleFiles(files: FileList | null) {
     if (!files) return;
-    // Three layers of dedup:
-    //   1. Same call: a single drop / picker session can list the
-    //      same file once.
-    //   2. In-flight jobs: skip files already queued or processing.
-    //   3. Already-imported (recent): skip files whose (name, bytes)
-    //      match an existing document — the strongest guard, and
-    //      catches re-drops after auto-dismissed "done" jobs.
+    // Two layers of dedup at enqueue time:
+    //   1. Within this batch: a single drop / picker session that
+    //      lists the same file twice only enqueues it once.
+    //   2. In-flight: skip files already queued or processing — that
+    //      catches double-fired events.
+    // Files that match an already-saved document are NOT filtered
+    // here — they go through runJob, and the write-time guard there
+    // shows them as "Duplicate — skipped" so the user can see what
+    // happened. Silent filtering at this layer was hiding real
+    // imports the user expected to see.
     const inflight = new Set(
       jobsRef.current
         .filter((j) => j.state !== "error")
         .map((j) => `${j.fileName}|${j.size}`),
     );
-    const alreadyImported = new Set(documents.map((d) => `${d.name}|${d.bytes}`));
     const newJobs: ImportJob[] = Array.from(files)
       .filter((file) => {
         const key = `${file.name}|${file.size}`;
-        if (inflight.has(key) || alreadyImported.has(key)) return false;
+        if (inflight.has(key)) return false;
         inflight.add(key);
         return true;
       })
