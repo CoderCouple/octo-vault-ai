@@ -71,6 +71,11 @@ export interface StorageAdapter {
   deleteExperience(id: string): Promise<void>;
   deleteRecordsFromDoc(documentId: string): Promise<void>;
 
+  // Relationships (typed edges between entities)
+  listRelationships(): Promise<import("./schema").RelationshipEdge[]>;
+  saveRelationship(rel: import("./schema").RelationshipEdge): Promise<void>;
+  deleteRelationship(id: string): Promise<void>;
+
   // Documents
   saveDocument(doc: StoredDocument): Promise<void>;
   listDocuments(): Promise<StoredDocument[]>;

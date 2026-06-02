@@ -71,6 +71,17 @@ CREATE TABLE IF NOT EXISTS experience_records (
 );
 CREATE INDEX IF NOT EXISTS exp_entity ON experience_records(entity_id);
 
+CREATE TABLE IF NOT EXISTS relationships (
+  id            TEXT PRIMARY KEY,
+  from_entity   TEXT NOT NULL,
+  to_entity     TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  document_id   TEXT,
+  data          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS rel_from ON relationships(from_entity);
+CREATE INDEX IF NOT EXISTS rel_to   ON relationships(to_entity);
+
 CREATE TABLE IF NOT EXISTS settings (
   key          TEXT PRIMARY KEY,
   value        TEXT NOT NULL
@@ -167,6 +178,7 @@ export const store = {
       d.prepare("DELETE FROM field_records WHERE entity_id = ?").run(eid);
       d.prepare("DELETE FROM education_records WHERE entity_id = ?").run(eid);
       d.prepare("DELETE FROM experience_records WHERE entity_id = ?").run(eid);
+      d.prepare("DELETE FROM relationships WHERE from_entity = ? OR to_entity = ?").run(eid, eid);
     });
     tx(id);
   },
@@ -278,6 +290,27 @@ export const store = {
     const d = requireDb();
     d.prepare("DELETE FROM education_records WHERE document_id = ?").run(documentId);
     d.prepare("DELETE FROM experience_records WHERE document_id = ?").run(documentId);
+    d.prepare("DELETE FROM relationships WHERE document_id = ?").run(documentId);
+  },
+
+  // Relationships
+  listRelationships() {
+    return requireDb().prepare("SELECT data FROM relationships").all()
+      .map((r) => JSON.parse((r as { data: string }).data));
+  },
+  saveRelationship(rel: {
+    id: string; fromEntityId: string; toEntityId: string; kind: string;
+    source?: { documentId?: string };
+  }) {
+    const json = JSON.stringify({ ...rel, updatedAt: Date.now() });
+    requireDb().prepare(
+      "INSERT INTO relationships(id, from_entity, to_entity, kind, document_id, data) VALUES (?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET from_entity = excluded.from_entity, to_entity = excluded.to_entity, " +
+      "kind = excluded.kind, document_id = excluded.document_id, data = excluded.data"
+    ).run(rel.id, rel.fromEntityId, rel.toEntityId, rel.kind, rel.source?.documentId ?? null, json);
+  },
+  deleteRelationship(id: string) {
+    requireDb().prepare("DELETE FROM relationships WHERE id = ?").run(id);
   },
 
   // Settings (stored under a fixed "settings" key)

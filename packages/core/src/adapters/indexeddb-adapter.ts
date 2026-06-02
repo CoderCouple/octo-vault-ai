@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS } from "../storage";
 import type { Settings, StorageAdapter, StoredDocument } from "../storage";
 import type {
   EducationRecord, Entity, ExperienceRecord, FieldRecord,
-  Profile, ProfileKey, VaultProfile,
+  Profile, ProfileKey, RelationshipEdge, VaultProfile,
 } from "../schema";
 import type { EmbeddingRecord } from "../qa";
 import { isEncrypted, vaultCrypto } from "../vault-crypto";
@@ -19,6 +19,7 @@ const entityStore = createStore("octovault-entities", "entities");
 const embedStore = createStore("octovault-embeddings", "vectors");
 const eduStore = createStore("octovault-education", "records");
 const expStore = createStore("octovault-experience", "records");
+const relStore = createStore("octovault-relationships", "edges");
 const settingsStore = createStore("octovault-settings", "kv");
 const authStore = createStore("octovault-auth", "kv");
 
@@ -92,13 +93,26 @@ export const indexedDbAdapter: StorageAdapter = {
   async deleteExperience(id) { await del(id, expStore); },
 
   async deleteRecordsFromDoc(documentId) {
-    for (const store of [eduStore, expStore]) {
+    for (const store of [eduStore, expStore, relStore]) {
       const ids = (await keys(store)) as string[];
       for (const id of ids) {
         const r = await getValue<{ source?: { documentId?: string } }>(store, id);
         if (r?.source?.documentId === documentId) await del(id, store);
       }
     }
+  },
+
+  // --- Relationships ---
+  async listRelationships() {
+    const ids = (await keys(relStore)) as string[];
+    const recs = await Promise.all(ids.map((k) => getValue<RelationshipEdge>(relStore, k)));
+    return recs.filter((r): r is RelationshipEdge => !!r);
+  },
+  async saveRelationship(rel) {
+    await putValue(relStore, rel.id, { ...rel, updatedAt: Date.now() });
+  },
+  async deleteRelationship(id) {
+    await del(id, relStore);
   },
 
   async deleteEntity(id) {
@@ -117,6 +131,14 @@ export const indexedDbAdapter: StorageAdapter = {
       for (const recId of ids) {
         const r = await getValue<{ entityId?: string }>(store, recId);
         if (r?.entityId === id) await del(recId, store);
+      }
+    }
+    // Drop any relationship that points to or from this entity.
+    const relIds = (await keys(relStore)) as string[];
+    for (const relId of relIds) {
+      const r = await getValue<RelationshipEdge>(relStore, relId);
+      if (r && (r.fromEntityId === id || r.toEntityId === id)) {
+        await del(relId, relStore);
       }
     }
   },

@@ -53,6 +53,11 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   async deleteExperience(_id) { throw new ReadOnlyError(); },
   async deleteRecordsFromDoc(_id) { throw new ReadOnlyError(); },
 
+  // Relationships — desktop bridge doesn't expose them yet; return empty.
+  async listRelationships() { return []; },
+  async saveRelationship(_r) { throw new ReadOnlyError(); },
+  async deleteRelationship(_id) { throw new ReadOnlyError(); },
+
   // Documents
   async listDocuments() { return get<StoredDocument[]>("/documents", []); },
   async getDocument(id) {

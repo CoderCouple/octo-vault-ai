@@ -120,6 +120,28 @@ export function AppProvider({ host, children }: { host: AppHost; children: React
             await addUserCandidate(host.storage, ent.id, "email", ent.email.trim(), normalizeValue);
           }
         }
+
+        // Backfill explicit Relationship records from the legacy
+        // Entity.relationship field. Every non-self entity whose
+        // relationship isn't "other" gets a Self→Entity edge if one
+        // doesn't already exist. Once written, the entity-graph view
+        // and any future graph reasoning have a real edge to work with.
+        const existing = await host.storage.listRelationships();
+        const seen = new Set(existing.map((r) => `${r.fromEntityId}|${r.toEntityId}|${r.kind}`));
+        for (const ent of all) {
+          if (ent.id === SELF_ENTITY_ID || ent.relationship === "self" || ent.relationship === "other") continue;
+          const key = `${SELF_ENTITY_ID}|${ent.id}|${ent.relationship}`;
+          if (seen.has(key)) continue;
+          await host.storage.saveRelationship({
+            id: crypto.randomUUID(),
+            fromEntityId: SELF_ENTITY_ID,
+            toEntityId: ent.id,
+            kind: ent.relationship as never,
+            userPinned: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
       } catch (e) {
         console.warn("[context] entity-seed migration skipped:", e);
       }

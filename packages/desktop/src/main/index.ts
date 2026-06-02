@@ -225,6 +225,9 @@ ipcMain.handle("store.listExperience",          (_e, entityId) => whenOpen(() =>
 ipcMain.handle("store.saveExperience",          (_e, record) => whenOpen(() => vault.store.saveExperience(record), null));
 ipcMain.handle("store.deleteExperience",        (_e, id) => whenOpen(() => vault.store.deleteExperience(id), null));
 ipcMain.handle("store.deleteRecordsFromDoc",    (_e, documentId) => whenOpen(() => vault.store.deleteRecordsFromDoc(documentId), null));
+ipcMain.handle("store.listRelationships",       () => whenOpen(() => vault.store.listRelationships(), [] as unknown[]));
+ipcMain.handle("store.saveRelationship",        (_e, rel) => whenOpen(() => vault.store.saveRelationship(rel), null));
+ipcMain.handle("store.deleteRelationship",      (_e, id) => whenOpen(() => vault.store.deleteRelationship(id), null));
 ipcMain.handle("store.getSettings",             () => whenOpen(() => vault.store.getSettings(), {}));
 ipcMain.handle("store.updateSettings",          (_e, patch) => whenOpen(() => vault.store.updateSettings(patch), patch ?? {}));
 ipcMain.handle("store.getAuthBlob",             () => whenOpen(() => vault.store.getAuthBlob(), null));

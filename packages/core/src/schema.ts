@@ -113,6 +113,46 @@ export interface EducationRecord {
   dismissedAt?: number;
 }
 
+// --- Relationships ---
+// First-class edges in the knowledge graph. Previously each Entity carried
+// a single `relationship` field pointing implicitly at Self; now any two
+// entities can be connected by any number of typed edges. Each edge
+// tracks its origin (asserted by the user, derived by rules, or pulled
+// from a document) so the user can audit the graph.
+
+export type RelationshipKind =
+  | "spouse" | "partner" | "child" | "parent" | "sibling" | "dependent"
+  | "grandparent" | "grandchild" | "parent-in-law" | "sibling-in-law"
+  | "step-parent" | "step-child" | "co-parent"
+  | "colleague" | "lives-with" | "friend" | "other";
+
+export interface RelationshipEdge {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  kind: RelationshipKind;
+  // Origin metadata.
+  userPinned?: boolean;          // user explicitly created or confirmed
+  derivedFrom?: string;          // derive-rule id if auto-created
+  source?: { documentId?: string; excerpt?: string };
+  // For symmetric kinds (spouse, sibling, colleague) the edge represents
+  // both directions and we render it once.
+  bidirectional?: boolean;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Which kinds are symmetric by nature. */
+export const SYMMETRIC_RELATIONSHIPS: RelationshipKind[] = [
+  "spouse", "partner", "sibling", "sibling-in-law", "co-parent", "colleague",
+  "lives-with", "friend", "other",
+];
+
+export function isSymmetricRelationship(kind: RelationshipKind): boolean {
+  return SYMMETRIC_RELATIONSHIPS.includes(kind);
+}
+
 export interface ExperienceRecord {
   id: string;
   entityId: string;
