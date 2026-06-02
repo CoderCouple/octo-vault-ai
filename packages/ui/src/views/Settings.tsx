@@ -1,0 +1,275 @@
+import { useEffect, useState } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { listModels, type OllamaConfig } from "@octovault/core";
+import { useAppContext } from "../context";
+import { useTheme } from "../components/theme";
+import { resetFirstSteps } from "../components/FirstSteps";
+import { cn } from "../lib/utils";
+import { Card } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
+import { Button } from "../components/ui/button";
+import { Separator } from "../components/ui/separator";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+
+export function SettingsView() {
+  const { storage, settings, setSettings, readOnly, activeEntityId, entities, refreshEntities, refreshDocuments } = useAppContext();
+  const { theme, setTheme } = useTheme();
+  const [models, setModels] = useState<string[]>([]);
+  const [showClearProfile, setShowClearProfile] = useState(false);
+  const [showResetAll, setShowResetAll] = useState(false);
+
+  async function rerunOnboarding() {
+    // Resetting Self's name/email re-triggers the mandatory modal in App.tsx.
+    await storage.saveEntity({
+      id: "self", name: "Self", email: "",
+      relationship: "self", initials: "ME",
+      createdAt: entities.find((e) => e.id === "self")?.createdAt ?? Date.now(),
+    });
+    await refreshEntities();
+  }
+
+  useEffect(() => {
+    const cfg: OllamaConfig = {
+      url: settings.ollamaUrl,
+      llmModel: settings.llmModel,
+      embeddingModel: settings.embeddingModel,
+    };
+    void listModels(cfg).then(setModels);
+  }, [settings.ollamaUrl, settings.llmModel, settings.embeddingModel]);
+
+  return (
+    <div className="space-y-5 p-3 text-sm">
+      <Section title="Appearance">
+        <Field label="Theme">
+          <div className="grid grid-cols-3 gap-1.5">
+            <ThemeOption icon={Monitor} label="System" active={theme === "system"} onClick={() => setTheme("system")} />
+            <ThemeOption icon={Sun}     label="Light"  active={theme === "light"}  onClick={() => setTheme("light")} />
+            <ThemeOption icon={Moon}    label="Dark"   active={theme === "dark"}   onClick={() => setTheme("dark")} />
+          </div>
+        </Field>
+      </Section>
+
+      <Separator />
+
+      <Section title="Ollama">
+        <Field label="URL">
+          <Input value={settings.ollamaUrl} onChange={(e) => void setSettings({ ollamaUrl: e.target.value })} />
+        </Field>
+        <Field label="LLM model" hint={models.length ? `Detected: ${models.join(", ")}` : "Pull a model with `ollama pull llama3.1:8b`"}>
+          <Picker
+            value={settings.llmModel}
+            options={models}
+            onChange={(v) => void setSettings({ llmModel: v })}
+          />
+        </Field>
+        <Field label="Embedding model">
+          <Picker
+            value={settings.embeddingModel}
+            options={models.filter((m) => m.includes("embed"))}
+            onChange={(v) => void setSettings({ embeddingModel: v })}
+          />
+        </Field>
+      </Section>
+
+      <Separator />
+
+      <Section title="Privacy">
+        <Toggle
+          label="Require master password for sensitive fields"
+          desc="Highly-sensitive values stay masked until re-auth."
+          checked={settings.requireUnlockForSensitive}
+          onChange={(v) => void setSettings({ requireUnlockForSensitive: v })}
+        />
+        <Toggle
+          label="Confirm before auto-fill"
+          desc="Always show a preview before filling forms."
+          checked={settings.autoFillPrompt}
+          onChange={(v) => void setSettings({ autoFillPrompt: v })}
+        />
+        <Field label="App lock timeout (minutes)">
+          <Input
+            type="number" min={0}
+            value={settings.appLockMinutes}
+            onChange={(e) => void setSettings({ appLockMinutes: Number(e.target.value) })}
+          />
+        </Field>
+      </Section>
+
+      <Separator />
+
+      <Section title="Onboarding">
+        <Button variant="outline" size="sm" disabled={readOnly} onClick={() => void rerunOnboarding()}>
+          Re-run setup wizard
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Re-opens the welcome dialog with Ollama / model checks and lets you update your name + email.
+          Documents and facts are kept.
+        </p>
+        <Button variant="outline" size="sm" onClick={() => resetFirstSteps()}>
+          Show first-steps tour again
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Brings back the "First steps" checklist on the Documents view.
+        </p>
+      </Section>
+
+      <Separator />
+
+      <Section title="Data">
+        <Button variant="destructive" size="sm" disabled={readOnly} onClick={() => setShowClearProfile(true)}>
+          Clear all extracted fields
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {readOnly
+            ? "Read-only mode. Switch to the local vault to clear fields."
+            : "Documents stay. All extracted candidates and pinned values are removed."}
+        </p>
+        <Button variant="destructive" size="sm" disabled={readOnly} onClick={() => setShowResetAll(true)}>
+          Reset vault (full wipe)
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Removes every document, entity, fact, embedding, and education / experience record.
+          Keeps your Ollama URL, model choice, theme, and master password. Useful after schema upgrades.
+        </p>
+      </Section>
+
+      <Separator />
+
+      <Card className="p-3 text-xs leading-relaxed text-muted-foreground">
+        OctoVault never sends your documents or extracted data to any server. All AI runs
+        on your device via Ollama at {settings.ollamaUrl}. Verify with your OS firewall or
+        Activity Monitor — outbound connections should only be to localhost.
+      </Card>
+
+      <AlertDialog open={showClearProfile} onOpenChange={setShowClearProfile}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear extracted fields?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Every fact extracted from your documents, including any values you've pinned,
+              will be removed. Documents are not deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={async () => { await storage.clearProfile(activeEntityId); setShowClearProfile(false); }}>
+              Clear
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showResetAll} onOpenChange={setShowResetAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset vault?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Removes every document, entity, fact, embedding, and record. Settings, theme,
+              and master password are kept. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={async () => {
+              const docs = await storage.listDocuments();
+              for (const d of docs) {
+                await storage.deleteDocument(d.id);
+                await storage.deleteCandidatesFromDoc(d.id);
+                await storage.deleteEmbeddingsForDoc(d.id);
+                await storage.deleteRecordsFromDoc(d.id);
+              }
+              for (const e of entities.filter((e) => e.id !== "self")) {
+                await storage.deleteEntity(e.id);
+              }
+              await storage.clearProfile("self");
+              await refreshEntities();
+              await refreshDocuments();
+              setShowResetAll(false);
+            }}>
+              Reset everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2.5">
+      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      {children}
+      {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+function Toggle({ label, desc, checked, onChange }: {
+  label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <Label className="text-sm">{label}</Label>
+        {desc && <div className="text-[10px] text-muted-foreground">{desc}</div>}
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+function ThemeOption({
+  icon: Icon, label, active, onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center gap-1 rounded-md border p-2 text-xs transition-colors",
+        active ? "border-foreground bg-accent" : "border-border hover:bg-accent/50"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function Picker({ value, options, onChange }: {
+  value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  if (options.length === 0) {
+    return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      {!options.includes(value) && <option value={value}>{value} (not installed)</option>}
+      {options.map((m) => <option key={m} value={m}>{m}</option>)}
+    </select>
+  );
+}

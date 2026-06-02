@@ -1,0 +1,71 @@
+# electron-builder config. Produces unsigned .dmg / .msi / .AppImage from
+# the electron-vite output in `out/`. Signing + notarization are off by
+# default — wire your Apple/Windows certs separately before publishing.
+
+appId: app.octovault.desktop
+productName: OctoVault
+copyright: Copyright © 2026 OctoVault
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  - "!node_modules/**/*"
+
+asar: true
+asarUnpack: []
+
+# Disable auto-publish; you upload manually.
+publish: null
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  # Unsigned dev build. Users will see a Gatekeeper warning on first open
+  # (right-click → Open). Provide a real Developer ID before public release.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # Icon — drop a 1024x1024 .icns into build/icon.icns before release.
+  # icon: build/icon.icns
+
+dmg:
+  title: ${productName}
+  # Window layout for the drag-to-Applications view.
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+  background: null
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target:
+    - AppImage
+  category: Office
+  # icon: build/icon.png

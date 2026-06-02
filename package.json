@@ -1,0 +1,24 @@
+{
+  "name": "octovault",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Fill any web form from your own documents. Locally.",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:extension": "npm --workspace @octovault/extension run dev",
+    "dev:desktop":   "npm --workspace @octovault/desktop run dev",
+    "dev:landing":   "npm --workspace @octovault/landing run dev",
+    "build:extension": "npm --workspace @octovault/extension run build",
+    "build:desktop":   "npm --workspace @octovault/desktop run build",
+    "build:landing":   "npm --workspace @octovault/landing run build",
+    "build": "npm run build:extension && npm run build:desktop && npm run build:landing",
+    "package:mac":     "npm --workspace @octovault/desktop run package:mac",
+    "package:mac-arm": "npm --workspace @octovault/desktop run package:mac-arm",
+    "rebuild:native":  "rm -rf node_modules/better-sqlite3-multiple-ciphers/build && npx --package=node-gyp@10 -- node-gyp rebuild --target=33.4.11 --arch=arm64 --dist-url=https://electronjs.org/headers --directory=node_modules/better-sqlite3-multiple-ciphers",
+    "postinstall":     "npm run rebuild:native || true",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

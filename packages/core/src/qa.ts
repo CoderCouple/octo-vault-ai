@@ -1,0 +1,225 @@
+// Local Q&A with source citations. Embeddings of facts + document
+// chunks live in IndexedDB. On a question: embed query, cosine top-k,
+// stuff into a prompt, ask the local LLM, return answer + citations.
+
+import { embed, generate, type OllamaConfig } from "./ollama";
+import { canonicalValue } from "./resolver";
+import { fieldByKey, PROFILE_FIELDS } from "./schema";
+import type { Entity, FieldRecord, Profile, ProfileKey, VaultProfile } from "./schema";
+import type { StoredDocument } from "./storage";
+
+// QaEngine abstracts the LLM transport so callers can route through
+// either direct fetch (extension service worker) or IPC (Electron
+// renderer → main). The renderer can't fetch localhost:11434 directly
+// due to CORS, so it implements this interface against window.octovault.
+export interface QaEngine {
+  embed(text: string): Promise<number[]>;
+  generate(prompt: string, system?: string): Promise<string>;
+}
+
+/** Build a QaEngine from an OllamaConfig — uses direct fetch. */
+export function fetchQaEngine(cfg: OllamaConfig): QaEngine {
+  return {
+    embed: (text) => embed(cfg, text),
+    generate: (prompt, system) => generate(cfg, { prompt, system, temperature: 0.1 }),
+  };
+}
+
+// --- Embedding records ---
+export interface EmbeddingRecord {
+  id: string;
+  kind: "fact" | "chunk";
+  entityId: string;
+  documentId?: string;
+  fieldKey?: ProfileKey;
+  page?: number;
+  text: string;
+  vector: number[];
+}
+
+export interface QaCitation {
+  documentId?: string;
+  documentName?: string;
+  entityId: string;
+  fieldKey?: ProfileKey;
+  fieldLabel?: string;
+  excerpt: string;
+  page?: number;
+  score: number;
+}
+
+export interface QaResult {
+  answer: string;
+  citations: QaCitation[];
+  retrieved: EmbeddingRecord[];
+}
+
+// --- Chunking ---
+const CHUNK_SIZE = 700;
+const CHUNK_OVERLAP = 100;
+
+export function chunkText(text: string): string[] {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= CHUNK_SIZE) return cleaned ? [cleaned] : [];
+  const out: string[] = [];
+  let i = 0;
+  while (i < cleaned.length) {
+    out.push(cleaned.slice(i, i + CHUNK_SIZE));
+    i += CHUNK_SIZE - CHUNK_OVERLAP;
+  }
+  return out;
+}
+
+// --- Math ---
+export function cosine(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+// --- Build embedding rows from a single freshly-imported document ---
+export async function buildEmbeddingsForDocument(
+  engine: QaEngine,
+  doc: StoredDocument,
+  candidates: { fieldKey: ProfileKey; value: string; entityId: string; page?: number }[],
+): Promise<EmbeddingRecord[]> {
+  const out: EmbeddingRecord[] = [];
+
+  // Embed each fact (small, fast).
+  for (const c of candidates) {
+    const label = fieldByKey(c.fieldKey).label;
+    const text = `${label}: ${c.value}`;
+    const vector = await engine.embed(text);
+    out.push({
+      id: crypto.randomUUID(),
+      kind: "fact",
+      entityId: c.entityId,
+      documentId: doc.id,
+      fieldKey: c.fieldKey,
+      page: c.page,
+      text,
+      vector,
+    });
+  }
+
+  // Embed each text chunk of the doc.
+  const chunks = chunkText(doc.text);
+  for (const text of chunks) {
+    const vector = await engine.embed(text);
+    out.push({
+      id: crypto.randomUUID(),
+      kind: "chunk",
+      entityId: doc.entityId,
+      documentId: doc.id,
+      text,
+      vector,
+    });
+  }
+
+  return out;
+}
+
+// --- Query ---
+const SYSTEM = `You are an on-device assistant answering personal questions about the user
+and their family using only the snippets provided. Cite sources inline like [1], [2]. If the
+snippets don't contain the answer, say so plainly — never invent. Keep answers short.`;
+
+interface ProfileLookup {
+  entities: Entity[];
+  vault: VaultProfile;
+  documents: StoredDocument[];
+}
+
+export async function ask(
+  engine: QaEngine,
+  question: string,
+  embeddings: EmbeddingRecord[],
+  lookup: ProfileLookup,
+  topK = 6,
+): Promise<QaResult> {
+  if (embeddings.length === 0) {
+    return { answer: "I don't have any indexed documents yet. Import a document first.", citations: [], retrieved: [] };
+  }
+
+  // Embed the query.
+  const qVec = await engine.embed(question);
+
+  // Rank.
+  const scored = embeddings.map((e) => ({ e, score: cosine(qVec, e.vector) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+
+  const retrieved = scored.map((s) => s.e);
+
+  // Build citations.
+  const citations: QaCitation[] = retrieved.map((r, i) => {
+    const doc = lookup.documents.find((d) => d.id === r.documentId);
+    const fieldLabel = r.fieldKey ? fieldByKey(r.fieldKey).label : undefined;
+    return {
+      documentId: r.documentId,
+      documentName: doc?.name,
+      entityId: r.entityId,
+      fieldKey: r.fieldKey,
+      fieldLabel,
+      excerpt: r.text.slice(0, 200),
+      page: r.page,
+      score: scored[i].score,
+    };
+  });
+
+  // Compose context block.
+  const ctxLines = retrieved.map((r, i) => {
+    const entity = lookup.entities.find((e) => e.id === r.entityId)?.name ?? "Unknown";
+    const doc = lookup.documents.find((d) => d.id === r.documentId)?.name ?? "user-entered";
+    return `[${i + 1}] (${entity} · ${doc}${r.page ? ` p.${r.page}` : ""}) ${r.text}`;
+  }).join("\n\n");
+
+  // Add canonical-profile summary for direct fact lookups.
+  const summary = summarizeProfiles(lookup);
+
+  const prompt = `Question: ${question}
+
+Profile summary:
+${summary}
+
+Snippets:
+${ctxLines}
+
+Answer the question using only the information above. Cite the snippet number(s) you used like [1] or [1,3].`;
+
+  const raw = await engine.generate(prompt, SYSTEM);
+
+  // Strip thinking tags if the model used them.
+  const answer = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+    .trim();
+
+  return { answer, citations, retrieved };
+}
+
+function summarizeProfiles(lookup: ProfileLookup): string {
+  const lines: string[] = [];
+  for (const entity of lookup.entities) {
+    const profile = lookup.vault[entity.id];
+    if (!profile) continue;
+    const facts: string[] = [];
+    for (const f of PROFILE_FIELDS) {
+      const record: FieldRecord | undefined = profile[f.key];
+      const v = record ? canonicalValue(record) : null;
+      if (v?.value) facts.push(`${f.label}: ${v.value}`);
+    }
+    if (facts.length) lines.push(`${entity.name} (${entity.relationship}) — ${facts.join("; ")}`);
+  }
+  return lines.join("\n") || "(no extracted facts yet)";
+}
+
+// Force tree-shake-friendly type re-export so callers can import these
+// alongside ask().
+export type { Profile };
