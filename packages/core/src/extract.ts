@@ -5,6 +5,7 @@
 import { generateJson, type OllamaConfig } from "./ollama";
 import { normalizeValue } from "./resolver";
 import { sanitizeCandidates, sanitizeEntityName, type SanitizationReport } from "./sanitize";
+import { reviewExtraction } from "./review";
 import {
   PROFILE_FIELDS,
   type DocType,
@@ -145,6 +146,14 @@ export interface ExtractionResult {
   // What sanitization did to the raw LLM output. Useful for the
   // import-progress UI and for debugging extraction quality.
   sanitization?: SanitizationReport;
+  // What the LLM-review pass did (rejections, corrections, entity-name
+  // re-attribution). Null if the review was skipped or failed.
+  review?: {
+    rejected: number;
+    corrected: number;
+    entityNameChanged: boolean;
+    entityReason?: string;
+  };
 }
 
 export async function extractFromText(
@@ -262,10 +271,31 @@ Rules:
     }));
 
   const { kept, report } = sanitizeCandidates(candidates);
+
+  // Phase 2: LLM self-review. Runs only if there's anything worth
+  // reviewing. Failure is non-fatal — we keep the sanitized output.
+  let finalCandidates = kept;
+  let finalEntityName = entityName;
+  let reviewSummary: ExtractionResult["review"] | undefined;
+  if (kept.length > 0 || entityName) {
+    const reviewed = await reviewExtraction(cfg, truncated, kept, entityName);
+    finalCandidates = reviewed.kept;
+    finalEntityName = reviewed.entityName;
+    reviewSummary = {
+      rejected: reviewed.rejected.length,
+      corrected: reviewed.corrected.length,
+      entityNameChanged: reviewed.entityNameChanged,
+      entityReason: reviewed.entityReason,
+    };
+  }
+
   return {
-    docType, entityName, relationshipHint,
-    candidates: kept,
+    docType,
+    entityName: finalEntityName,
+    relationshipHint,
+    candidates: finalCandidates,
     education, experience,
     sanitization: report,
+    review: reviewSummary,
   };
 }

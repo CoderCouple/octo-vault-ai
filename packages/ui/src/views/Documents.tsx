@@ -173,13 +173,15 @@ export function Documents() {
       }
 
       updateJob(id, { state: "extracting", progress: 0.5, message: "Extracting fields" });
-      const { docType, candidates, education, experience, entityName, relationshipHint, sanitization } =
+      const { docType, candidates, education, experience, entityName, relationshipHint, sanitization, review } =
         await host.extractFromText(docId, text);
-      if (sanitization && (sanitization.dropped || sanitization.downgraded)) {
-        updateJob(id, {
-          message: `Sanitized: ${sanitization.dropped} dropped, ${sanitization.downgraded} flagged low`,
-        });
-      }
+      const cleanups: string[] = [];
+      if (sanitization?.dropped) cleanups.push(`${sanitization.dropped} dropped`);
+      if (sanitization?.downgraded) cleanups.push(`${sanitization.downgraded} flagged`);
+      if (review?.rejected) cleanups.push(`${review.rejected} rejected by review`);
+      if (review?.corrected) cleanups.push(`${review.corrected} corrected by review`);
+      if (review?.entityNameChanged) cleanups.push(`re-tagged to ${entityName}`);
+      if (cleanups.length) updateJob(id, { message: `Sanitization: ${cleanups.join(", ")}` });
 
       const entity = entityName
         ? await resolveEntityFromName(entityName, relationshipHint)
