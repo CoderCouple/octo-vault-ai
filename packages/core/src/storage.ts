@@ -19,10 +19,15 @@ export interface StoredDocument {
   docType: DocType;
   ocrUsed: boolean;
   mimeType?: string;            // e.g., "application/pdf", "image/jpeg"
-  // Original file as a base64 data URL. Optional because legacy
-  // imports don't have it; once saved here the viewer can render the
-  // file directly via <iframe>/<img>. Adds ~33% storage overhead vs
-  // raw bytes — acceptable for a local-only personal vault.
+  // Original-file storage. Two ways to keep it, pick the cheapest:
+  //   filePath:    absolute path to the file on disk (desktop only,
+  //                no storage cost, but breaks if the user moves the file)
+  //   fileDataUrl: base64 data URL embedded in the doc record
+  //                (works everywhere, costs ~1.33x file size in storage)
+  // The viewer prefers fileDataUrl, falls back to filePath. The user
+  // can convert a path-only reference into permanent storage from the
+  // viewer UI.
+  filePath?: string;
   fileDataUrl?: string;
 }
 

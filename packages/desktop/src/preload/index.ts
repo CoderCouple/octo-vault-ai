@@ -32,6 +32,11 @@ const vault = {
   lock:       () => ipcRenderer.invoke("vault.lock")                as Promise<void>,
 };
 
+const doc = {
+  readBytes: (docId: string) =>
+    ipcRenderer.invoke("doc.readBytes", docId) as Promise<{ bytes: Uint8Array; mimeType?: string } | null>,
+};
+
 // Every method maps 1:1 onto a method in the renderer's IPC adapter.
 const store = {
   listEntities:            ()                       => ipcRenderer.invoke("store.listEntities"),
@@ -63,11 +68,12 @@ const store = {
   setAuthBlob:             (blob: Uint8Array)       => ipcRenderer.invoke("store.setAuthBlob", blob),
 };
 
-contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store });
+contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc });
 
 export type OctovaultBridge = {
   ollama: typeof ollama;
   bridge: typeof bridge;
   vault: typeof vault;
   store: typeof store;
+  doc: typeof doc;
 };

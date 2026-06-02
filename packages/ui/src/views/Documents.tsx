@@ -141,12 +141,16 @@ export function Documents() {
         ? await resolveEntityFromName(entityName, relationshipHint)
         : { id: activeEntityId };
 
-      // Stash the original bytes as a base64 data URL so the in-app
-      // viewer can render the actual PDF / image. Best-effort: don't
-      // block import if encoding fails (large files, OOM).
+      // Prefer a path reference over a copied data URL — zero storage
+      // cost and the viewer reads from disk on demand. Electron sets
+      // file.path on dropped/picked Files; in a regular browser this
+      // is undefined and we fall back to base64.
+      const filePath = (job.file as File & { path?: string }).path;
       let fileDataUrl: string | undefined;
-      try { fileDataUrl = await fileToDataUrl(job.file); }
-      catch (e) { console.warn(`[ingest] could not encode original ${job.fileName}:`, e); }
+      if (!filePath) {
+        try { fileDataUrl = await fileToDataUrl(job.file); }
+        catch (e) { console.warn(`[ingest] could not encode original ${job.fileName}:`, e); }
+      }
 
       const mimeType = job.file.type
         || (lower.endsWith(".pdf") ? "application/pdf" : undefined);
@@ -154,7 +158,7 @@ export function Documents() {
       const doc: StoredDocument = {
         id: docId, entityId: entity.id, name: job.fileName, importedAt: Date.now(),
         bytes: job.size, text, pageCount, docType, ocrUsed,
-        mimeType, fileDataUrl,
+        mimeType, filePath, fileDataUrl,
       };
       await storage.saveDocument(doc);
       const withEntity: FieldCandidate[] = candidates.map((c) => ({ ...c, entityId: entity.id }));

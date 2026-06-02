@@ -4,6 +4,7 @@
 
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import http from "node:http";
+import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as vault from "./sqlite-store";
@@ -228,6 +229,23 @@ ipcMain.handle("store.getSettings",             () => whenOpen(() => vault.store
 ipcMain.handle("store.updateSettings",          (_e, patch) => whenOpen(() => vault.store.updateSettings(patch), patch ?? {}));
 ipcMain.handle("store.getAuthBlob",             () => whenOpen(() => vault.store.getAuthBlob(), null));
 ipcMain.handle("store.setAuthBlob",             (_e, blob) => whenOpen(() => vault.store.setAuthBlob(blob), null));
+
+// Read a document's referenced file from disk by ID. Security: only
+// the file path stored on the document record is read — the renderer
+// can't pass arbitrary paths. Returns { bytes, mimeType } or null on
+// missing/inaccessible files.
+ipcMain.handle("doc.readBytes", async (_e, docId: string) => {
+  if (!vault.isOpen()) return null;
+  const doc = vault.store.getDocument(docId) as { filePath?: string; mimeType?: string } | undefined;
+  if (!doc?.filePath) return null;
+  try {
+    const buf = await fs.readFile(doc.filePath);
+    return { bytes: new Uint8Array(buf), mimeType: doc.mimeType };
+  } catch (err) {
+    console.warn("[doc.readBytes] read failed:", err);
+    return null;
+  }
+});
 
 ipcMain.handle("ollama.embed", async (_e, cfg: OllamaCfg, model: string, prompt: string) => {
   const r = await fetch(`${cfg.url}/api/embeddings`, {
