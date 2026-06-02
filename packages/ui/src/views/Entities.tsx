@@ -164,22 +164,20 @@ export function Entities() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>This cascades and cannot be undone. The following will be permanently removed:</p>
-                {cascade ? (
-                  <ul className="list-disc space-y-0.5 pl-5 text-foreground">
-                    <li>{cascade.docs} document{cascade.docs === 1 ? "" : "s"}</li>
-                    <li>{cascade.fields} stored field{cascade.fields === 1 ? "" : "s"}</li>
-                    <li>{cascade.education} education record{cascade.education === 1 ? "" : "s"}</li>
-                    <li>{cascade.experience} experience record{cascade.experience === 1 ? "" : "s"}</li>
-                    <li>{cascade.relationships} relationship edge{cascade.relationships === 1 ? "" : "s"}</li>
-                  </ul>
-                ) : (
-                  <p className="text-xs">Computing impact…</p>
-                )}
-              </div>
+            <AlertDialogDescription>
+              This cascades and cannot be undone. The following will be permanently removed:
             </AlertDialogDescription>
+            {cascade ? (
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm">
+                <li>{cascade.docs} document{cascade.docs === 1 ? "" : "s"}</li>
+                <li>{cascade.fields} stored field{cascade.fields === 1 ? "" : "s"}</li>
+                <li>{cascade.education} education record{cascade.education === 1 ? "" : "s"}</li>
+                <li>{cascade.experience} experience record{cascade.experience === 1 ? "" : "s"}</li>
+                <li>{cascade.relationships} relationship edge{cascade.relationships === 1 ? "" : "s"}</li>
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Computing impact…</p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

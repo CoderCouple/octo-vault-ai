@@ -171,10 +171,19 @@ export function Documents() {
         : { id: activeEntityId };
 
       // Prefer a path reference over a copied data URL — zero storage
-      // cost and the viewer reads from disk on demand. Electron sets
-      // file.path on dropped/picked Files; in a regular browser this
-      // is undefined and we fall back to base64.
-      const filePath = (job.file as File & { path?: string }).path;
+      // cost and the viewer reads from disk on demand. Electron 32+
+      // removed File.path; the preload exposes webUtils.getPathForFile
+      // as octovault.doc.pathFor. In a regular browser neither is
+      // available and we fall back to a base64 data URL.
+      const desktopDocApi = (window as unknown as { octovault?: { doc?: { pathFor?: (f: File) => string } } }).octovault?.doc;
+      let filePath: string | undefined;
+      try {
+        const legacy = (job.file as File & { path?: string }).path;
+        const resolved = desktopDocApi?.pathFor?.(job.file);
+        filePath = legacy || (resolved && resolved.length > 0 ? resolved : undefined);
+      } catch {
+        filePath = undefined;
+      }
       let fileDataUrl: string | undefined;
       if (!filePath) {
         try { fileDataUrl = await fileToDataUrl(job.file); }
@@ -263,20 +272,62 @@ export function Documents() {
 
   function handleFiles(files: FileList | null) {
     if (!files) return;
-    const newJobs: ImportJob[] = Array.from(files).map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      fileName: file.name,
-      size: file.size,
-      state: "queued",
-      progress: 0,
-    }));
+    // Drop anything already queued / in-progress by (name, size). A
+    // single click should never enqueue the same physical file twice
+    // even if the event bubbles or the user multi-selects accidentally.
+    const inflight = new Set(
+      jobsRef.current
+        .filter((j) => j.state !== "done" && j.state !== "error")
+        .map((j) => `${j.fileName}|${j.size}`),
+    );
+    const newJobs: ImportJob[] = Array.from(files)
+      .filter((file) => {
+        const key = `${file.name}|${file.size}`;
+        if (inflight.has(key)) return false;
+        inflight.add(key);
+        return true;
+      })
+      .map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        fileName: file.name,
+        size: file.size,
+        state: "queued",
+        progress: 0,
+      }));
+    if (newJobs.length === 0) return;
     setJobs((js) => {
       const next = [...js, ...newJobs];
       jobsRef.current = next;
       return next;
     });
     void processNext();
+  }
+
+  // Walk the doc list and collapse rows that share (entityId, name,
+  // bytes), keeping the most-recently-imported. Used to clean up after
+  // the duplicate-import bug.
+  async function removeDuplicates() {
+    if (readOnly) return;
+    const byKey = new Map<string, StoredDocument[]>();
+    for (const d of documents) {
+      const key = `${d.entityId}|${d.name}|${d.bytes}`;
+      (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(d);
+    }
+    let removed = 0;
+    for (const group of byKey.values()) {
+      if (group.length < 2) continue;
+      const keep = group.slice().sort((a, b) => b.importedAt - a.importedAt)[0];
+      for (const d of group) {
+        if (d.id === keep.id) continue;
+        await storage.deleteDocument(d.id);
+        await storage.deleteCandidatesFromDoc(d.id);
+        await storage.deleteEmbeddingsForDoc(d.id);
+        await storage.deleteRecordsFromDoc(d.id);
+        removed++;
+      }
+    }
+    if (removed > 0) await refreshDocuments();
   }
 
   function dismissJob(id: string) {
@@ -288,11 +339,15 @@ export function Documents() {
   }
 
   async function confirmDelete(d: StoredDocument) {
-    await storage.deleteDocument(d.id);
-    await storage.deleteCandidatesFromDoc(d.id);
-    await storage.deleteEmbeddingsForDoc(d.id);
-    await storage.deleteRecordsFromDoc(d.id);
     setPendingDelete(null);
+    try {
+      await storage.deleteDocument(d.id);
+      await storage.deleteCandidatesFromDoc(d.id);
+      await storage.deleteEmbeddingsForDoc(d.id);
+      await storage.deleteRecordsFromDoc(d.id);
+    } catch (e) {
+      console.error("[doc] delete failed:", e);
+    }
     await refreshDocuments();
   }
 
@@ -365,27 +420,60 @@ export function Documents() {
   }
 
 
+  const duplicateCount = (() => {
+    const seen = new Map<string, number>();
+    for (const d of documents) {
+      const key = `${d.entityId}|${d.name}|${d.bytes}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    let dup = 0;
+    for (const n of seen.values()) if (n > 1) dup += n - 1;
+    return dup;
+  })();
+
   return (
     <div className="space-y-3 p-3">
       <FirstSteps />
+      {duplicateCount > 0 && !readOnly && (
+        <Card className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Found {duplicateCount} duplicate document{duplicateCount === 1 ? "" : "s"} (same name + size, same entity).
+          </span>
+          <Button size="sm" variant="outline" onClick={() => void removeDuplicates()}>
+            Remove duplicates
+          </Button>
+        </Card>
+      )}
       {readOnly ? (
         <Card className="border-dashed p-4 text-center text-xs text-muted-foreground">
           You're viewing the <span className="font-medium">{source?.label}</span>. To add documents, switch to the local vault from the pill in the top-right.
         </Card>
       ) : (
-        <Card
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-          className="cursor-pointer border-dashed p-6 text-center transition-colors hover:border-foreground/50"
-        >
-          <Upload className="mx-auto h-5 w-5 text-muted-foreground" />
-          <div className="mt-2 text-sm">Drag PDFs or images here, or click to choose.</div>
-          <div className="mt-1 text-[10px] text-muted-foreground">
-            Drop many at once — each gets its own progress bar. Scanned files use on-device OCR.
-          </div>
-          <input ref={inputRef} type="file" accept={ACCEPT} multiple hidden onChange={(e) => handleFiles(e.target.files)} />
-        </Card>
+        <>
+          <Card
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+            className="cursor-pointer border-dashed p-6 text-center transition-colors hover:border-foreground/50"
+          >
+            <Upload className="mx-auto h-5 w-5 text-muted-foreground" />
+            <div className="mt-2 text-sm">Drag PDFs or images here, or click to choose.</div>
+            <div className="mt-1 text-[10px] text-muted-foreground">
+              Drop many at once — each gets its own progress bar. Scanned files use on-device OCR.
+            </div>
+          </Card>
+          {/* Input lives OUTSIDE the Card. Otherwise programmatic
+              inputRef.click() bubbles back to the Card and re-triggers
+              the picker, producing duplicate imports. */}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+          />
+        </>
       )}
 
       {jobs.length > 0 && (
@@ -456,21 +544,19 @@ export function Documents() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>Removes the document and every fact extracted from it. Other documents are untouched.</p>
-                {docCascade ? (
-                  <ul className="list-disc space-y-0.5 pl-5 text-foreground">
-                    <li>{docCascade.fieldRefs} field record{docCascade.fieldRefs === 1 ? "" : "s"} sourced by this doc</li>
-                    <li>{docCascade.education} education record{docCascade.education === 1 ? "" : "s"}</li>
-                    <li>{docCascade.experience} experience record{docCascade.experience === 1 ? "" : "s"}</li>
-                    <li>{docCascade.relationships} relationship edge{docCascade.relationships === 1 ? "" : "s"}</li>
-                  </ul>
-                ) : (
-                  <p className="text-xs">Computing impact…</p>
-                )}
-              </div>
+            <AlertDialogDescription>
+              Removes the document and every fact extracted from it. Other documents are untouched.
             </AlertDialogDescription>
+            {docCascade ? (
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm">
+                <li>{docCascade.fieldRefs} field record{docCascade.fieldRefs === 1 ? "" : "s"} sourced by this doc</li>
+                <li>{docCascade.education} education record{docCascade.education === 1 ? "" : "s"}</li>
+                <li>{docCascade.experience} experience record{docCascade.experience === 1 ? "" : "s"}</li>
+                <li>{docCascade.relationships} relationship edge{docCascade.relationships === 1 ? "" : "s"}</li>
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Computing impact…</p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

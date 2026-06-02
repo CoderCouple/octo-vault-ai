@@ -4,7 +4,7 @@
 //   - vault.*     SQLCipher lifecycle (init, unlock, lock, exists)
 //   - store.*     StorageAdapter surface backed by SQLCipher
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 interface OllamaCfg { url: string; llmModel: string; embeddingModel: string }
 
@@ -35,6 +35,10 @@ const vault = {
 const doc = {
   readBytes: (docId: string) =>
     ipcRenderer.invoke("doc.readBytes", docId) as Promise<{ bytes: Uint8Array; mimeType?: string } | null>,
+  // Electron 32+ removed File.path on dropped/picked Files. webUtils
+  // is the official replacement. Returns the absolute path or ""
+  // for synthetic Files.
+  pathFor: (file: File) => webUtils.getPathForFile(file),
 };
 
 // Every method maps 1:1 onto a method in the renderer's IPC adapter.
