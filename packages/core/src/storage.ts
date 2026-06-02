@@ -13,11 +13,17 @@ export interface StoredDocument {
   entityId: string;             // which entity this document is primarily about
   name: string;
   importedAt: number;
-  bytes: number;
-  text: string;
+  bytes: number;                // file size in bytes (metadata only)
+  text: string;                 // extracted text layer (for chat retrieval)
   pageCount: number;
   docType: DocType;
   ocrUsed: boolean;
+  mimeType?: string;            // e.g., "application/pdf", "image/jpeg"
+  // Original file as a base64 data URL. Optional because legacy
+  // imports don't have it; once saved here the viewer can render the
+  // file directly via <iframe>/<img>. Adds ~33% storage overhead vs
+  // raw bytes — acceptable for a local-only personal vault.
+  fileDataUrl?: string;
 }
 
 export interface Settings {

@@ -14,7 +14,7 @@ import {
   type Node, type Edge, type NodeProps, type EdgeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Check, FileText, Pencil, ScanLine, X } from "lucide-react";
+import { Check, FileText, Pencil, ScanLine, Users, X } from "lucide-react";
 import {
   addUserCandidate, canonicalValue, dismissCandidate, fieldByKey, initialsFor, normalizeValue,
   type ConflictState, type Entity, type FieldRecord, type ProfileKey,
@@ -40,16 +40,28 @@ interface FactNodeData extends Record<string, unknown> {
   focused?: boolean;
   onSave: (next: string) => Promise<void>;
 }
+interface EntityNodeData extends Record<string, unknown> {
+  entity: Entity;
+  factCount: number;
+  focused?: boolean;
+}
 interface EdgeData extends Record<string, unknown> {
-  onDelete: () => Promise<void>;
+  onDelete?: () => Promise<void>;
 }
 
-const NODE_TYPES = { document: DocumentNode, fact: FactNode };
+const NODE_TYPES = { document: DocumentNode, fact: FactNode, entity: EntityNode };
 const EDGE_TYPES = { deletable: DeletableEdge };
+
+type ViewMode = "source" | "entity";
+const VIEW_KEY = "octovault.factsGraph.viewMode";
 
 export function FactsGraph() {
   const { storage, documents, readOnly, entities } = useAppContext();
   const [vault, setVault] = useState<VaultProfile>({});
+  const [viewMode, setViewModeState] = useState<ViewMode>(
+    () => (localStorage.getItem(VIEW_KEY) as ViewMode | null) ?? "source"
+  );
+  const setViewMode = (m: ViewMode) => { setViewModeState(m); localStorage.setItem(VIEW_KEY, m); };
 
   const refresh = useCallback(async () => {
     setVault(await storage.getAllProfiles());
@@ -77,8 +89,10 @@ export function FactsGraph() {
   );
 
   const { initialNodes, initialEdges } = useMemo(
-    () => buildGraph(documents, entities, vault, onSaveFact, onDeleteCandidate),
-    [documents, entities, vault, onSaveFact, onDeleteCandidate]
+    () => viewMode === "entity"
+      ? buildGraphByEntity(entities, vault, onSaveFact)
+      : buildGraph(documents, entities, vault, onSaveFact, onDeleteCandidate),
+    [viewMode, documents, entities, vault, onSaveFact, onDeleteCandidate]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -105,7 +119,31 @@ export function FactsGraph() {
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
+      {/* View-mode toggle */}
+      <div className="absolute left-3 top-3 z-10 flex items-center gap-0.5 rounded-md border bg-card p-0.5 shadow-sm">
+        <button
+          onClick={() => setViewMode("source")}
+          title="By source — documents linked to facts"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+            viewMode === "source" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+          )}
+        >
+          <FileText className="h-3 w-3" /> By source
+        </button>
+        <button
+          onClick={() => setViewMode("entity")}
+          title="By entity — facts grouped by person"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+            viewMode === "entity" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+          )}
+        >
+          <Users className="h-3 w-3" /> By entity
+        </button>
+      </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -209,11 +247,162 @@ function buildGraph(
   return { initialNodes: [...docNodes, ...factNodes], initialEdges: edges };
 }
 
+// Entity-centric layout: one column per entity. Entity node at the top
+// of the column, its facts stacked below grouped by category. Family
+// relationships (spouse, parent, child) drawn as edges between entity
+// nodes.
+function buildGraphByEntity(
+  entities: Entity[],
+  vault: VaultProfile,
+  onSaveFact: (entityId: string, key: ProfileKey, next: string) => Promise<void>,
+): { initialNodes: Node[]; initialEdges: Edge[] } {
+  const COL_WIDTH = 320;
+  const ROW_HEIGHT = 60;
+  const ENTITY_TOP = 20;
+  const FACTS_TOP = 160;
+
+  const entityById = new Map(entities.map((e) => [e.id, e]));
+
+  // Keep self first, then the rest in created order.
+  const ordered = [...entities].sort((a, b) => {
+    if (a.id === "self") return -1;
+    if (b.id === "self") return 1;
+    return a.createdAt - b.createdAt;
+  });
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  ordered.forEach((entity, colIdx) => {
+    const x = 60 + colIdx * COL_WIDTH;
+
+    const profile = vault[entity.id] ?? {};
+    const records = Object.values(profile)
+      .filter((r): r is FieldRecord => !!r && r.candidates.some((c) => !c.dismissedAt));
+
+    // Group records by their schema category for visual clustering.
+    records.sort((a, b) => {
+      const fa = fieldByKey(a.key);
+      const fb = fieldByKey(b.key);
+      if (fa.category !== fb.category) return fa.category.localeCompare(fb.category);
+      return a.key.localeCompare(b.key);
+    });
+
+    // Entity node at top of the column.
+    nodes.push({
+      id: `entity:${entity.id}`,
+      type: "entity",
+      position: { x, y: ENTITY_TOP },
+      data: { entity, factCount: records.length },
+    } as Node<EntityNodeData>);
+
+    // Fact nodes below, with an edge from entity → each fact.
+    records.forEach((r, i) => {
+      const canonical = canonicalValue(r);
+      const field = fieldByKey(r.key);
+      const factId = `fact:${entity.id}:${r.key}`;
+      nodes.push({
+        id: factId,
+        type: "fact",
+        position: { x, y: FACTS_TOP + i * ROW_HEIGHT },
+        data: {
+          fieldKey: r.key,
+          entityId: entity.id,
+          entityName: entity.name,
+          entityInitials: entity.initials,
+          label: field.label,
+          value: canonical?.value ?? "",
+          sourcesCount: r.candidates.filter((c) => !c.dismissedAt).length,
+          conflict: r.conflictState,
+          onSave: (next: string) => onSaveFact(entity.id, r.key, next),
+        },
+      } as Node<FactNodeData>);
+
+      edges.push({
+        id: `e-of:${entity.id}:${r.key}`,
+        source: `entity:${entity.id}`,
+        target: factId,
+        type: "smoothstep",
+        style: {
+          stroke: "hsl(var(--foreground))",
+          strokeOpacity: 0.4,
+          strokeWidth: 1,
+        },
+      });
+    });
+  });
+
+  // Family relationship edges between entities.
+  for (const e of entities) {
+    const target = entityById.get(e.id);
+    if (!target) continue;
+    const isRelative = e.relationship !== "self" && e.relationship !== "other";
+    const selfEntity = entityById.get("self");
+    if (!isRelative || !selfEntity || e.id === "self") continue;
+    // Draw spouse / partner / child / parent etc. as labelled edges
+    // from self to the relative.
+    edges.push({
+      id: `e-fam:${e.id}`,
+      source: `entity:self`,
+      target: `entity:${e.id}`,
+      type: "smoothstep",
+      label: e.relationship,
+      labelStyle: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
+      labelBgStyle: { fill: "hsl(var(--card))" },
+      labelBgPadding: [4, 2],
+      style: {
+        stroke: "hsl(var(--foreground))",
+        strokeOpacity: 0.6,
+        strokeWidth: 1.5,
+        strokeDasharray: "2 3",
+      },
+    });
+  }
+
+  return { initialNodes: nodes, initialEdges: edges };
+}
+
 function relevantTo(clickedId: string, nodeId: string, edges: Edge[]): boolean {
   if (clickedId === nodeId) return true;
   return edges.some(
     (e) => (e.source === clickedId && e.target === nodeId) ||
            (e.target === clickedId && e.source === nodeId)
+  );
+}
+
+function EntityNode({ data }: NodeProps) {
+  const { entity, factCount, focused } = data as EntityNodeData;
+  return (
+    <div
+      className={cn(
+        "w-[260px] rounded-lg border-2 bg-card px-3 py-2.5 text-card-foreground shadow-sm",
+        focused === false && "opacity-40",
+        focused === true ? "border-foreground" : "border-border"
+      )}
+    >
+      {/* Family edges: incoming on the left, outgoing on the right. */}
+      <Handle id="fam-l" type="target" position={Position.Left} className="!h-2 !w-2 !border-foreground !bg-foreground" />
+      <Handle id="fam-r" type="source" position={Position.Right} className="!h-2 !w-2 !border-foreground !bg-foreground" />
+      {/* Fact edges hang off the bottom of the entity node. */}
+      <Handle id="facts" type="source" position={Position.Bottom} className="!h-2 !w-2 !border-foreground !bg-foreground" />
+
+      <div className="flex items-center gap-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-foreground bg-card text-xs font-semibold">
+          {entity.initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{entity.name}</div>
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>{entity.relationship}</span>
+            <span>·</span>
+            <span>{factCount} fact{factCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      </div>
+      {entity.email && (
+        <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{entity.email}</div>
+      )}
+    </div>
   );
 }
 
@@ -332,7 +521,7 @@ function DeletableEdge(props: EdgeProps) {
       <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
       <EdgeLabelRenderer>
         <button
-          onClick={(e) => { e.stopPropagation(); void d?.onDelete(); }}
+          onClick={(e) => { e.stopPropagation(); if (d?.onDelete) void d.onDelete(); }}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           className="nodrag nopan pointer-events-auto absolute flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-foreground opacity-0 transition-opacity hover:bg-accent hover:opacity-100 [.react-flow__edge:hover_&]:opacity-100"
           title="Remove this source"

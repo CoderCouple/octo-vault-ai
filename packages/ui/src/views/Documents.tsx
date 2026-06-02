@@ -25,6 +25,7 @@ import {
 import { cn } from "../lib/utils";
 import { tx } from "../lib/brand";
 import { FirstSteps } from "../components/FirstSteps";
+import { DocumentViewer } from "./DocumentViewer";
 
 const ACCEPT = ".pdf,image/png,image/jpeg,image/webp";
 
@@ -58,6 +59,7 @@ export function Documents() {
   } = useAppContext();
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [pendingDelete, setPendingDelete] = useState<StoredDocument | null>(null);
+  const [viewing, setViewing] = useState<StoredDocument | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef(false);
   // Mirror jobs into a ref for synchronous reads inside the queue loop.
@@ -84,6 +86,15 @@ export function Documents() {
     } finally {
       processingRef.current = false;
     }
+  }
+
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
   }
 
   async function runJob(job: ImportJob) {
@@ -130,9 +141,20 @@ export function Documents() {
         ? await resolveEntityFromName(entityName, relationshipHint)
         : { id: activeEntityId };
 
+      // Stash the original bytes as a base64 data URL so the in-app
+      // viewer can render the actual PDF / image. Best-effort: don't
+      // block import if encoding fails (large files, OOM).
+      let fileDataUrl: string | undefined;
+      try { fileDataUrl = await fileToDataUrl(job.file); }
+      catch (e) { console.warn(`[ingest] could not encode original ${job.fileName}:`, e); }
+
+      const mimeType = job.file.type
+        || (lower.endsWith(".pdf") ? "application/pdf" : undefined);
+
       const doc: StoredDocument = {
         id: docId, entityId: entity.id, name: job.fileName, importedAt: Date.now(),
         bytes: job.size, text, pageCount, docType, ocrUsed,
+        mimeType, fileDataUrl,
       };
       await storage.saveDocument(doc);
       const withEntity: FieldCandidate[] = candidates.map((c) => ({ ...c, entityId: entity.id }));
@@ -354,7 +376,11 @@ export function Documents() {
         {documents.map((d) => {
           const ent = entities.find((e) => e.id === d.entityId);
           return (
-            <Card key={d.id} className="flex items-center justify-between px-3 py-2">
+            <Card
+              key={d.id}
+              onClick={() => setViewing(d)}
+              className="flex cursor-pointer items-center justify-between px-3 py-2 transition-colors hover:bg-accent/30"
+            >
               <div className="flex min-w-0 items-center gap-2">
                 {d.ocrUsed ? <ScanLine className="h-4 w-4 text-muted-foreground" /> : <FileText className="h-4 w-4 text-muted-foreground" />}
                 <div className="min-w-0">
@@ -377,7 +403,7 @@ export function Documents() {
                 </div>
               </div>
               {!readOnly && (
-                <div className="flex items-center">
+                <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" onClick={() => void reExtract(d)} title="Re-extract">
                     <RotateCw className="h-4 w-4" />
                   </Button>
@@ -390,6 +416,8 @@ export function Documents() {
           );
         })}
       </div>
+
+      <DocumentViewer doc={viewing} open={!!viewing} onOpenChange={(o) => !o && setViewing(null)} />
 
       <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
         <AlertDialogContent>
