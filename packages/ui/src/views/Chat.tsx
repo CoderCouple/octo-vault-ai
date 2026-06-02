@@ -3,11 +3,11 @@
 // numbered citations linked to source documents and fields.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, FileText, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUp, AtSign, FileText, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import type { QaCitation, QaResult, StoredDocument } from "@octovault/core";
+import type { Entity, QaCitation, QaResult, QaTurn, StoredDocument } from "@octovault/core";
 import { useAppContext } from "../context";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -20,7 +20,37 @@ interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   citations?: QaCitation[];
+  scopedEntities?: { id: string; name: string }[];   // for assistant: which entities the question was scoped to
   at: number;
+}
+
+// Resolve "@name" tokens in the user's input to entity IDs.
+// Returns the matched entities (in order) and the cleaned text with
+// the @tokens stripped, so the LLM prompt isn't polluted.
+function parseMentions(input: string, entities: Entity[]): { matched: Entity[]; cleaned: string } {
+  const matched: Entity[] = [];
+  // Match @ followed by letters/digits (and dots/dashes/spaces until end).
+  // We keep matching greedy from longest entity name.
+  const sortedByLen = [...entities].sort((a, b) => b.name.length - a.name.length);
+  let cleaned = input;
+  for (const ent of sortedByLen) {
+    const pattern = new RegExp(`@${ent.name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\b`, "gi");
+    if (pattern.test(cleaned)) {
+      matched.push(ent);
+      cleaned = cleaned.replace(pattern, "").trim();
+    } else {
+      // Also accept just the first name as @Sunil etc.
+      const first = ent.name.split(/\s+/)[0];
+      if (first) {
+        const firstPattern = new RegExp(`@${first.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\b`, "gi");
+        if (firstPattern.test(cleaned)) {
+          if (!matched.includes(ent)) matched.push(ent);
+          cleaned = cleaned.replace(firstPattern, "").trim();
+        }
+      }
+    }
+  }
+  return { matched, cleaned: cleaned.replace(/\s+/g, " ").trim() || input };
 }
 
 interface Conversation {
@@ -43,7 +73,7 @@ function saveConversations(c: Conversation[]) {
 }
 
 export function Chat() {
-  const { host, documents } = useAppContext();
+  const { host, documents, entities } = useAppContext();
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY));
   const [input, setInput] = useState("");
@@ -96,7 +126,12 @@ export function Chat() {
     const q = input.trim();
     if (!q || busy || !active) return;
     setInput("");
+
+    // Pull out @mentions → scope the retrieval to those entities.
+    const { matched, cleaned } = parseMentions(q, entities);
+
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text: q, at: Date.now() };
+    const scopedEntities = matched.map((e) => ({ id: e.id, name: e.name }));
 
     setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
       ...c,
@@ -106,8 +141,20 @@ export function Chat() {
     }));
     setBusy(true);
     try {
-      const res: QaResult = await host.ask(q);
-      const reply: ChatMessage = { id: crypto.randomUUID(), role: "assistant", text: res.answer, citations: res.citations, at: Date.now() };
+      // Build chat history from prior turns for query rewriting.
+      const history: QaTurn[] = active.messages.map((m) => ({
+        role: m.role, text: m.text,
+      }));
+      const res: QaResult = await host.ask(cleaned, {
+        scope: matched.length > 0 ? { entityIds: matched.map((e) => e.id) } : undefined,
+        history,
+      });
+      const reply: ChatMessage = {
+        id: crypto.randomUUID(), role: "assistant",
+        text: res.answer, citations: res.citations,
+        scopedEntities: scopedEntities.length > 0 ? scopedEntities : undefined,
+        at: Date.now(),
+      };
       setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
         ...c, messages: [...c.messages, reply], updatedAt: Date.now(),
       }));
@@ -197,23 +244,44 @@ export function Chat() {
         </div>
 
         <div className="border-t bg-background p-3">
-          <div className="mx-auto flex max-w-3xl items-end gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              rows={1}
-              placeholder="Ask anything about your documents…"
-              className="flex max-h-32 min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <Button onClick={() => void send()} disabled={busy || !input.trim()} size="icon">
-              <ArrowUp className="h-4 w-4" />
-            </Button>
+          <div className="mx-auto max-w-3xl space-y-1.5">
+            {entities.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={tx.microcap}>Scope with</span>
+                {entities.slice(0, 6).map((e) => {
+                  const first = e.name.split(/\s+/)[0];
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => setInput((s) => `${s.trim()} @${first} `.trimStart())}
+                      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium hover:bg-accent"
+                      title={`Insert @${first}`}
+                    >
+                      <AtSign className="h-2.5 w-2.5" /> {first}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                rows={1}
+                placeholder="Ask anything about your documents… (try @Sunil to scope)"
+                className="flex max-h-32 min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <Button onClick={() => void send()} disabled={busy || !input.trim()} size="icon">
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -258,6 +326,16 @@ function MessageRow({ message, documents }: { message: ChatMessage; documents: S
 
   return (
     <div className="space-y-2">
+      {message.scopedEntities && message.scopedEntities.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className={tx.microcap}>scope:</span>
+          {message.scopedEntities.map((e) => (
+            <Badge key={e.id} variant="outline" className="gap-1">
+              <AtSign className="h-2.5 w-2.5" /> {e.name}
+            </Badge>
+          ))}
+        </div>
+      )}
       <MarkdownAnswer text={message.text} citationCount={message.citations?.length ?? 0} jumpTo={citationId} />
       {message.citations && message.citations.length > 0 && (
         <div className="space-y-1.5">

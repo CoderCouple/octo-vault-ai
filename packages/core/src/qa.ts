@@ -25,6 +25,22 @@ export function fetchQaEngine(cfg: OllamaConfig): QaEngine {
   };
 }
 
+// --- Scope ---
+// Optional filter passed by the UI to narrow retrieval. The Chat input
+// parses @mentions and produces this.
+export interface QaScope {
+  entityIds?: string[];     // restrict to these entities; empty/omitted = all
+}
+
+// --- Chat history (for query rewriting) ---
+// One short past turn from the conversation, used to expand the current
+// question into a standalone retrieval query (handles follow-ups like
+// "and when did she graduate?").
+export interface QaTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
 // --- Embedding records ---
 export interface EmbeddingRecord {
   id: string;
@@ -136,22 +152,46 @@ interface ProfileLookup {
   documents: StoredDocument[];
 }
 
+export interface AskOptions {
+  scope?: QaScope;
+  history?: QaTurn[];
+  topK?: number;
+}
+
 export async function ask(
   engine: QaEngine,
   question: string,
   embeddings: EmbeddingRecord[],
   lookup: ProfileLookup,
-  topK = 6,
+  opts: AskOptions = {},
 ): Promise<QaResult> {
+  const { scope, history = [], topK = 6 } = opts;
+
   if (embeddings.length === 0) {
     return { answer: "I don't have any indexed documents yet. Import a document first.", citations: [], retrieved: [] };
   }
 
-  // Embed the query.
-  const qVec = await engine.embed(question);
+  // Optional scope filter: limit retrieval to specific entities.
+  const pool = scope?.entityIds?.length
+    ? embeddings.filter((e) => scope.entityIds!.includes(e.entityId))
+    : embeddings;
+  if (pool.length === 0) {
+    return {
+      answer: "No indexed data for the scoped entities. Try removing the @mention or importing a document for them.",
+      citations: [], retrieved: [],
+    };
+  }
 
-  // Rank.
-  const scored = embeddings.map((e) => ({ e, score: cosine(qVec, e.vector) }))
+  // Query rewriting: if there's prior conversation context, ask the
+  // model to expand the current question into a standalone retrieval
+  // query that name-checks any people referenced. Cheap, big quality win.
+  const retrievalQuery = history.length > 0
+    ? await rewriteQuery(engine, question, history, lookup)
+    : question;
+
+  // Embed the (possibly rewritten) query and rank.
+  const qVec = await engine.embed(retrievalQuery);
+  const scored = pool.map((e) => ({ e, score: cosine(qVec, e.vector) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
 
@@ -202,6 +242,47 @@ Answer the question using only the information above. Cite the snippet number(s)
     .trim();
 
   return { answer, citations, retrieved };
+}
+
+// Expand a follow-up question into a standalone retrieval query.
+// "and when did she graduate?" → "When did <name from prior turn> graduate?"
+async function rewriteQuery(
+  engine: QaEngine,
+  question: string,
+  history: QaTurn[],
+  lookup: ProfileLookup,
+): Promise<string> {
+  const entityNames = lookup.entities.map((e) => e.name).filter(Boolean).join(", ");
+  const recent = history.slice(-6)
+    .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text.slice(0, 300)}`)
+    .join("\n");
+
+  const prompt = `Rewrite the user's latest question into a self-contained search query for
+a local document retrieval system. Resolve all pronouns ("she", "they", "it",
+"my husband") to concrete names. Use the conversation context and the list
+of known entities. Output the rewritten query ONLY — no commentary.
+
+Known entities: ${entityNames || "(none)"}
+
+Recent conversation:
+${recent}
+
+User: ${question}
+
+Rewritten query:`;
+
+  try {
+    const raw = await engine.generate(prompt);
+    const cleaned = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, "");
+    // If the model returned nothing useful, fall back to the original.
+    return cleaned.length >= 4 && cleaned.length < 500 ? cleaned : question;
+  } catch {
+    return question;
+  }
 }
 
 function summarizeProfiles(lookup: ProfileLookup): string {

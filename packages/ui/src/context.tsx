@@ -7,7 +7,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   addUserCandidate, ensureSelfEntity, normalizeValue, resolveOrCreateEntity, SELF_ENTITY_ID,
-  type Entity, type ExtractionResult, type QaResult, type Settings, type StorageAdapter, type StoredDocument,
+  type AskOptions, type Entity, type ExtractionResult, type QaResult,
+  type Settings, type StorageAdapter, type StoredDocument,
 } from "@octovault/core";
 
 export interface VaultSource {
@@ -24,7 +25,7 @@ export interface AppHost {
   isOllamaReachable(): Promise<boolean>;
   extractFromText(documentId: string, text: string): Promise<ExtractionResult>;
   embed(text: string): Promise<number[]>;
-  ask(question: string): Promise<QaResult>;
+  ask(question: string, opts?: AskOptions): Promise<QaResult>;
   // Vault lifecycle. Both surfaces support this — extension uses
   // WebCrypto + the IDB auth blob; desktop uses SQLCipher via IPC.
   vaultExists(): Promise<boolean>;

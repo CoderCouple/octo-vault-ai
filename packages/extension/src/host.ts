@@ -78,7 +78,7 @@ export const extensionHost: AppHost = {
   async vaultLock(): Promise<void> { vaultCrypto.lock(); },
   isVaultUnlocked(): boolean { return vaultCrypto.isUnlocked(); },
 
-  async ask(question): Promise<QaResult> {
+  async ask(question, opts): Promise<QaResult> {
     const s = await indexedDbAdapter.getSettings();
     const [embeddings, entities, vault, documents] = await Promise.all([
       indexedDbAdapter.listEmbeddings(),
@@ -87,6 +87,6 @@ export const extensionHost: AppHost = {
       indexedDbAdapter.listDocuments(),
     ]);
     const engine = fetchQaEngine({ url: s.ollamaUrl, llmModel: s.llmModel, embeddingModel: s.embeddingModel });
-    return ask(engine, question, embeddings, { entities, vault, documents });
+    return ask(engine, question, embeddings, { entities, vault, documents }, opts);
   },
 };

@@ -2,6 +2,25 @@
 
 > Private. Local. Yours. — your local AI vault for personal paperwork.
 
+[![CI](https://github.com/CoderCouple/octo-vault-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/CoderCouple/octo-vault-ai/actions/workflows/ci.yml)
+![Stars](https://img.shields.io/github/stars/CoderCouple/octo-vault-ai?style=flat&logo=github)
+![Last commit](https://img.shields.io/github/last-commit/CoderCouple/octo-vault-ai?style=flat&logo=git&logoColor=white)
+![Issues](https://img.shields.io/github/issues/CoderCouple/octo-vault-ai?style=flat&logo=github)
+![License](https://img.shields.io/badge/license-pre--launch-lightgrey?style=flat)
+
+![Local only](https://img.shields.io/badge/100%25-local%20only-black?style=flat&logo=lock&logoColor=white)
+![No cloud](https://img.shields.io/badge/no-cloud-black?style=flat&logo=icloud&logoColor=white)
+![Encrypted](https://img.shields.io/badge/SQLCipher-encrypted-black?style=flat&logo=sqlite&logoColor=white)
+![Ollama](https://img.shields.io/badge/powered%20by-Ollama-black?style=flat&logo=ollama&logoColor=white)
+
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)
+![Electron](https://img.shields.io/badge/Electron-2C2E3A?style=flat&logo=electron&logoColor=9FEAF9)
+![shadcn/ui](https://img.shields.io/badge/UI-shadcn%2Fui-000?style=flat)
+![Vite](https://img.shields.io/badge/build-vite-646CFF?style=flat&logo=vite&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-supported-000?style=flat&logo=apple&logoColor=white)
+![Chrome](https://img.shields.io/badge/Chrome-extension-4285F4?style=flat&logo=googlechrome&logoColor=white)
+
 OctoVault AI is a local-only personal vault that scans, understands, and
 securely stores personal documents — and uses them to fill web forms in
 your browser, answer questions about your data, and resolve conflicts

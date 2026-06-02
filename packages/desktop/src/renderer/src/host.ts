@@ -182,7 +182,7 @@ Return JSON:
     const r = await window.octovault!.ollama.embed(c, c.embeddingModel, text);
     return r.embedding;
   },
-  async ask(question): Promise<QaResult> {
+  async ask(question, opts): Promise<QaResult> {
     const c = await cfg();
     const [embeddings, entities, vault, documents] = await Promise.all([
       ipcStorageAdapter.listEmbeddings(),
@@ -190,8 +190,6 @@ Return JSON:
       ipcStorageAdapter.getAllProfiles(),
       ipcStorageAdapter.listDocuments(),
     ]);
-    // Route both embed and generate through the preload IPC bridge so
-    // the renderer never hits localhost:11434 directly (avoids CORS).
     const engine: QaEngine = {
       embed: async (text) => (await window.octovault!.ollama.embed(c, c.embeddingModel, text)).embedding,
       generate: async (prompt, system) => {
@@ -202,7 +200,7 @@ Return JSON:
         return r.response;
       },
     };
-    return askLocal(engine, question, embeddings, { entities, vault, documents });
+    return askLocal(engine, question, embeddings, { entities, vault, documents }, opts);
   },
 
   // --- Vault lifecycle (SQLCipher via main process) ---
