@@ -25,11 +25,7 @@ export const ipcStorageAdapter: StorageAdapter = {
   async saveEntity(e) { await s().saveEntity(e); },
   async deleteEntity(id) { await s().deleteEntity(id); },
 
-  async saveDocument(doc) {
-    // Temporary instrumentation to chase a ghost-duplicate bug.
-    console.warn("[trace] saveDocument", (doc as { id: string; name: string }).id, (doc as { id: string; name: string }).name, new Error().stack);
-    await s().saveDocument(doc);
-  },
+  async saveDocument(doc) { await s().saveDocument(doc); },
   async listDocuments() { return safe(() => s().listDocuments() as Promise<StoredDocument[]>, []); },
   async getDocument(id) { return safe(() => s().getDocument(id) as Promise<StoredDocument | undefined>, undefined); },
   async deleteDocument(id) { await s().deleteDocument(id); },

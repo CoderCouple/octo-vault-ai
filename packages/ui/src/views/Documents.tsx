@@ -95,12 +95,22 @@ export function Documents() {
   const jobsRef = useRef<ImportJob[]>([]);
   useEffect(() => { jobsRef.current = jobs; }, [jobs]);
 
+  // Sync the ref BEFORE the state. The processNext loop reads
+  // jobsRef between awaits and React only flushes setJobs updaters
+  // at its own pace; if the ref lags, a "done" job can re-appear as
+  // "queued" and get processed again — creating a duplicate row.
+  function mutateJobs(fn: (js: ImportJob[]) => ImportJob[]) {
+    jobsRef.current = fn(jobsRef.current);
+    setJobs(jobsRef.current);
+  }
   function updateJob(id: string, patch: Partial<ImportJob>) {
-    setJobs((js) => {
-      const next = js.map((j) => (j.id === id ? { ...j, ...patch } : j));
-      jobsRef.current = next;
-      return next;
-    });
+    mutateJobs((js) => js.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+  }
+  function removeJob(id: string) {
+    mutateJobs((js) => js.filter((j) => j.id !== id));
+  }
+  function addJob(job: ImportJob) {
+    mutateJobs((js) => [...js, job]);
   }
 
   async function processNext() {
@@ -209,11 +219,7 @@ export function Documents() {
       );
       if (dupe) {
         updateJob(id, { state: "done", progress: 1, message: "Duplicate — skipped" });
-        setTimeout(() => setJobs((js) => {
-          const next = js.filter((j) => j.id !== id);
-          jobsRef.current = next;
-          return next;
-        }), 2500);
+        setTimeout(() => removeJob(id), 2500);
         return;
       }
       await storage.saveDocument(doc);
@@ -272,13 +278,7 @@ export function Documents() {
 
       updateJob(id, { state: "done", progress: 1, message: "Done" });
       await refreshDocuments();
-
-      // Auto-dismiss successful jobs after 2.5s.
-      setTimeout(() => setJobs((js) => {
-        const next = js.filter((j) => j.id !== id);
-        jobsRef.current = next;
-        return next;
-      }), 2500);
+      setTimeout(() => removeJob(id), 2500);
     } catch (err) {
       updateJob(id, {
         state: "error",
@@ -319,11 +319,7 @@ export function Documents() {
         progress: 0,
       }));
     if (newJobs.length === 0) return;
-    // Mutate the ref synchronously so the very next handleFiles call
-    // (e.g., bubbled event, StrictMode double-render) sees these jobs.
-    // The setJobs updater would defer this until React commits.
-    jobsRef.current = [...jobsRef.current, ...newJobs];
-    setJobs(jobsRef.current);
+    mutateJobs((js) => [...js, ...newJobs]);
     void processNext();
   }
 
@@ -354,11 +350,7 @@ export function Documents() {
   }
 
   function dismissJob(id: string) {
-    setJobs((js) => {
-      const next = js.filter((j) => j.id !== id);
-      jobsRef.current = next;
-      return next;
-    });
+    removeJob(id);
   }
 
   async function confirmDelete(d: StoredDocument) {
@@ -392,11 +384,7 @@ export function Documents() {
       progress: 0.5,
       message: "Re-extracting…",
     };
-    setJobs((js) => {
-      const next = [...js, job];
-      jobsRef.current = next;
-      return next;
-    });
+    addJob(job);
     try {
       const { docType, candidates, education, experience, entityName, relationshipHint } =
         await host.extractFromText(d.id, d.text);
@@ -432,11 +420,7 @@ export function Documents() {
       } catch (e) { console.warn("[reextract] embed:", e); }
       updateJob(job.id, { state: "done", progress: 1, message: `Re-extracted ${candidates.length} fields` });
       await refreshDocuments();
-      setTimeout(() => setJobs((js) => {
-        const next = js.filter((j) => j.id !== job.id);
-        jobsRef.current = next;
-        return next;
-      }), 2500);
+      setTimeout(() => removeJob(job.id), 2500);
     } catch (err) {
       updateJob(job.id, { state: "error", error: err instanceof Error ? err.message : String(err) });
     }
