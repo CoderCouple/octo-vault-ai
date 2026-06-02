@@ -59,7 +59,36 @@ export function Documents() {
   } = useAppContext();
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [pendingDelete, setPendingDelete] = useState<StoredDocument | null>(null);
+  const [docCascade, setDocCascade] = useState<{ fieldRefs: number; education: number; experience: number; relationships: number } | null>(null);
   const [viewing, setViewing] = useState<StoredDocument | null>(null);
+
+  useEffect(() => {
+    if (!pendingDelete) { setDocCascade(null); return; }
+    const docId = pendingDelete.id;
+    let cancelled = false;
+    void (async () => {
+      const [profile, edu, exp, rels] = await Promise.all([
+        storage.getAllProfiles(),
+        storage.listEducation(pendingDelete.entityId),
+        storage.listExperience(pendingDelete.entityId),
+        storage.listRelationships(),
+      ]);
+      if (cancelled) return;
+      let fieldRefs = 0;
+      for (const e of Object.values(profile)) {
+        for (const r of Object.values(e)) {
+          if (r.candidates.some((c) => c.source.documentId === docId)) fieldRefs++;
+        }
+      }
+      setDocCascade({
+        fieldRefs,
+        education: edu.filter((r) => r.source?.documentId === docId).length,
+        experience: exp.filter((r) => r.source?.documentId === docId).length,
+        relationships: rels.filter((r) => r.source?.documentId === docId).length,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [pendingDelete, storage]);
   const inputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef(false);
   // Mirror jobs into a ref for synchronous reads inside the queue loop.
@@ -427,8 +456,20 @@ export function Documents() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The document and every fact extracted from it will be removed from this device. Other documents are untouched.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Removes the document and every fact extracted from it. Other documents are untouched.</p>
+                {docCascade ? (
+                  <ul className="list-disc space-y-0.5 pl-5 text-foreground">
+                    <li>{docCascade.fieldRefs} field record{docCascade.fieldRefs === 1 ? "" : "s"} sourced by this doc</li>
+                    <li>{docCascade.education} education record{docCascade.education === 1 ? "" : "s"}</li>
+                    <li>{docCascade.experience} experience record{docCascade.experience === 1 ? "" : "s"}</li>
+                    <li>{docCascade.relationships} relationship edge{docCascade.relationships === 1 ? "" : "s"}</li>
+                  </ul>
+                ) : (
+                  <p className="text-xs">Computing impact…</p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

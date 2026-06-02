@@ -39,6 +39,30 @@ export function Entities() {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<{ name: string; relationship: Relationship }>({ name: "", relationship: "spouse" });
   const [pendingDelete, setPendingDelete] = useState<Entity | null>(null);
+  const [cascade, setCascade] = useState<{ docs: number; education: number; experience: number; fields: number; relationships: number } | null>(null);
+
+  useEffect(() => {
+    if (!pendingDelete) { setCascade(null); return; }
+    const id = pendingDelete.id;
+    let cancelled = false;
+    void (async () => {
+      const [edu, exp, rels, profile] = await Promise.all([
+        storage.listEducation(id),
+        storage.listExperience(id),
+        storage.listRelationships(),
+        storage.getProfile(id),
+      ]);
+      if (cancelled) return;
+      setCascade({
+        docs: documents.filter((d) => d.entityId === id).length,
+        education: edu.length,
+        experience: exp.length,
+        fields: Object.keys(profile).length,
+        relationships: rels.filter((r) => r.fromEntityId === id || r.toEntityId === id).length,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [pendingDelete, storage, documents]);
 
   async function createEntity() {
     if (!draft.name.trim() || readOnly) return;
@@ -140,8 +164,21 @@ export function Entities() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Removes the entity and every document and fact attached to them. This can't be undone.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>This cascades and cannot be undone. The following will be permanently removed:</p>
+                {cascade ? (
+                  <ul className="list-disc space-y-0.5 pl-5 text-foreground">
+                    <li>{cascade.docs} document{cascade.docs === 1 ? "" : "s"}</li>
+                    <li>{cascade.fields} stored field{cascade.fields === 1 ? "" : "s"}</li>
+                    <li>{cascade.education} education record{cascade.education === 1 ? "" : "s"}</li>
+                    <li>{cascade.experience} experience record{cascade.experience === 1 ? "" : "s"}</li>
+                    <li>{cascade.relationships} relationship edge{cascade.relationships === 1 ? "" : "s"}</li>
+                  </ul>
+                ) : (
+                  <p className="text-xs">Computing impact…</p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
