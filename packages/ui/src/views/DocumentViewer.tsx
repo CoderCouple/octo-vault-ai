@@ -1,34 +1,48 @@
-// Open a stored document. Two source modes:
-//   - fileDataUrl: base64 embedded in the doc record (permanent, costs
-//     ~1.33x storage). Used by the extension and as a "make permanent"
-//     option on desktop.
-//   - filePath:    absolute path on disk (desktop only, zero storage
-//     cost). The viewer reads the bytes on demand via IPC.
-// Falls back to a friendly attach-prompt for legacy imports that have
-// neither.
+// Open a stored document. Two source modes for the preview:
+//   - fileDataUrl: base64 embedded in the doc record (permanent)
+//   - filePath:    absolute path on disk (desktop only, zero storage,
+//     read on demand via IPC)
+//
+// Layout: 3-pane.
+//   1. Header — title, entity assignment, metadata, badges
+//   2. Left  — original file preview
+//   3. Right — scrollable detail: extracted facts, records, raw text
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Image as ImageIcon, Loader2, Paperclip, Pin, ScanLine } from "lucide-react";
-import type { StoredDocument } from "@octovault/core";
+import {
+  AlertTriangle, FileText, Image as ImageIcon, Loader2,
+  Paperclip, Pin, ScanLine, UserCircle2,
+} from "lucide-react";
+import {
+  canonicalValue, fieldByKey,
+  type EducationRecord, type ExperienceRecord, type Profile, type StoredDocument,
+} from "@octovault/core";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Card } from "../components/ui/card";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { Separator } from "../components/ui/separator";
 import { useAppContext } from "../context";
 import { tx } from "../lib/brand";
-import { cn } from "../lib/utils";
 
-// Detect Electron — only there can we read arbitrary file paths.
-// The desktop host declares the full window.octovault shape; we just
-// pull the doc bridge off it here without redeclaring (which would
-// collide with the host's type).
 interface DocBridge {
   readBytes(id: string): Promise<{ bytes: Uint8Array; mimeType?: string } | null>;
 }
 function desktopDoc(): DocBridge | undefined {
   return (window as unknown as { octovault?: { doc?: DocBridge } }).octovault?.doc;
+}
+
+interface DocFact {
+  fieldKey: string;
+  label: string;
+  value: string;
+  confidence: "high" | "medium" | "low";
+  excerpt?: string;
+  page?: number;
+  conflicted: boolean;
 }
 
 export function DocumentViewer({
@@ -38,30 +52,30 @@ export function DocumentViewer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { storage, refreshDocuments, readOnly } = useAppContext();
+  const { storage, refreshDocuments, entities, setActiveEntityId, readOnly } = useAppContext();
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Preview source
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loadingFromDisk, setLoadingFromDisk] = useState(false);
   const [diskError, setDiskError] = useState<string | null>(null);
   const [pinning, setPinning] = useState(false);
 
+  // Right-pane data derived from this doc
+  const [facts, setFacts] = useState<DocFact[]>([]);
+  const [education, setEducation] = useState<EducationRecord[]>([]);
+  const [experience, setExperience] = useState<ExperienceRecord[]>([]);
+
   const isPdf = !!doc && (doc.mimeType === "application/pdf" || doc.name.toLowerCase().endsWith(".pdf"));
   const isImage = !!doc && (doc.mimeType?.startsWith("image/") ?? /\.(jpe?g|png|webp|gif|heic)$/i.test(doc.name));
+  const entity = doc ? entities.find((e) => e.id === doc.entityId) : null;
 
-  // Resolve the preview source whenever the doc changes:
-  //   1. fileDataUrl wins (already permanent in the vault)
-  //   2. Otherwise, if filePath, ask main to read it on demand
-  //   3. Otherwise show the attach-prompt
+  // Load preview when doc opens.
   useEffect(() => {
-    setPreviewUrl(null);
-    setDiskError(null);
+    setPreviewUrl(null); setDiskError(null);
     if (!doc || !open) return;
 
-    if (doc.fileDataUrl) {
-      setPreviewUrl(doc.fileDataUrl);
-      return;
-    }
+    if (doc.fileDataUrl) { setPreviewUrl(doc.fileDataUrl); return; }
     if (doc.filePath && desktopDoc()) {
       let cancelled = false;
       let blobUrl: string | null = null;
@@ -70,10 +84,7 @@ export function DocumentViewer({
         try {
           const res = await desktopDoc()!.readBytes(doc.id);
           if (cancelled) return;
-          if (!res) {
-            setDiskError("Original file is missing at " + doc.filePath);
-            return;
-          }
+          if (!res) { setDiskError("Original file is missing at " + doc.filePath); return; }
           const blob = new Blob([res.bytes as BlobPart], { type: res.mimeType ?? doc.mimeType ?? "application/octet-stream" });
           blobUrl = URL.createObjectURL(blob);
           setPreviewUrl(blobUrl);
@@ -83,12 +94,24 @@ export function DocumentViewer({
           if (!cancelled) setLoadingFromDisk(false);
         }
       })();
-      return () => {
-        cancelled = true;
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
-      };
+      return () => { cancelled = true; if (blobUrl) URL.revokeObjectURL(blobUrl); };
     }
   }, [doc, open]);
+
+  // Load facts + records derived from this document.
+  useEffect(() => {
+    if (!doc || !open) { setFacts([]); setEducation([]); setExperience([]); return; }
+    void (async () => {
+      const [profile, edu, exp] = await Promise.all([
+        storage.getProfile(doc.entityId),
+        storage.listEducation(doc.entityId),
+        storage.listExperience(doc.entityId),
+      ]);
+      setFacts(buildDocFacts(profile, doc.id));
+      setEducation(edu.filter((r) => r.source.documentId === doc.id));
+      setExperience(exp.filter((r) => r.source.documentId === doc.id));
+    })();
+  }, [doc, open, storage]);
 
   async function attachOriginal(file: File) {
     if (!doc) return;
@@ -108,10 +131,8 @@ export function DocumentViewer({
     onOpenChange(false);
   }
 
-  // Read from filePath, embed permanently into fileDataUrl. After this
-  // the doc survives even if the original file is moved or deleted.
   async function makePermanent() {
-    if (!doc || !doc.filePath || !desktopDoc()) return;
+    if (!doc?.filePath || !desktopDoc()) return;
     setPinning(true);
     try {
       const res = await desktopDoc()!.readBytes(doc.id);
@@ -138,21 +159,15 @@ export function DocumentViewer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[90vh] max-w-[1100px] gap-0 overflow-hidden p-0">
+      <DialogContent className="h-[92vh] max-w-[1200px] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-3">
           <div className="flex items-center gap-2">
             {doc.ocrUsed ? <ScanLine className="h-4 w-4 shrink-0" />
              : isImage ? <ImageIcon className="h-4 w-4 shrink-0" />
              : <FileText className="h-4 w-4 shrink-0" />}
             <DialogTitle className="truncate text-base">{doc.name}</DialogTitle>
-            {hasPermanent && (
-              <Badge variant="outline" className="ml-1 gap-1">
-                <Pin className="h-2.5 w-2.5" /> embedded
-              </Badge>
-            )}
-            {!hasPermanent && hasPath && (
-              <Badge variant="muted" className="ml-1">linked from disk</Badge>
-            )}
+            {hasPermanent && <Badge variant="outline" className="ml-1 gap-1"><Pin className="h-2.5 w-2.5" /> embedded</Badge>}
+            {!hasPermanent && hasPath && <Badge variant="muted" className="ml-1">linked from disk</Badge>}
           </div>
           <DialogDescription className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide">
             <Badge variant="outline">{doc.docType}</Badge>
@@ -167,7 +182,7 @@ export function DocumentViewer({
         </DialogHeader>
 
         <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[3fr_2fr]">
-          {/* Original file preview (left) */}
+          {/* Left: original preview */}
           <div className="relative min-h-0 overflow-hidden border-r bg-muted/30">
             {loadingFromDisk ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -181,14 +196,9 @@ export function DocumentViewer({
                   <img src={previewUrl} alt={doc.name} className="max-h-full max-w-full object-contain" />
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center p-6 text-center">
-                  <div className="max-w-xs text-sm text-muted-foreground">
-                    Preview not supported for this file type. Extracted text is on the right.
-                  </div>
-                </div>
+                <NoPreview text="Preview not supported for this file type." />
               )
             ) : (
-              // No preview available — show why + offer to attach.
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground" />
                 <div className="max-w-xs text-sm text-muted-foreground">
@@ -197,7 +207,7 @@ export function DocumentViewer({
                 {!readOnly && (
                   <>
                     <Button onClick={() => fileInput.current?.click()} size="sm">
-                      <Paperclip className="h-3.5 w-3.5" /> Attach original file
+                      <Paperclip className="h-3.5 w-3.5" /> Attach original
                     </Button>
                     <input
                       ref={fileInput} type="file" hidden
@@ -205,15 +215,13 @@ export function DocumentViewer({
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachOriginal(f); }}
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      Pick the file from disk. Bytes get embedded in the vault — extraction isn't re-run.
+                      Pick the file from disk. Extraction isn't re-run.
                     </p>
                   </>
                 )}
               </div>
             )}
 
-            {/* Make-permanent action — when we have a disk path but no
-                embedded copy yet. */}
             {!hasPermanent && hasPath && previewUrl && !readOnly && (
               <div className="absolute bottom-2 right-2">
                 <Button size="sm" variant="outline" disabled={pinning} onClick={() => void makePermanent()}>
@@ -224,23 +232,172 @@ export function DocumentViewer({
             )}
           </div>
 
-          {/* Extracted text (right) */}
-          <div className="flex min-h-0 flex-col">
-            <div className={cn("border-b px-3 py-2", tx.microcap)}>Extracted text</div>
-            <ScrollArea className="flex-1">
-              {doc.text.trim().length > 0 ? (
-                <pre className="whitespace-pre-wrap px-3 py-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  {doc.text}
-                </pre>
-              ) : (
-                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No text was extracted. This may be a scanned file where OCR returned nothing useful.
+          {/* Right: detail pane (entity / facts / records / text) */}
+          <ScrollArea className="min-h-0">
+            <div className="space-y-4 p-4">
+
+              {/* 1. Entity */}
+              <section className="space-y-1.5">
+                <div className={tx.microcap}>Belongs to</div>
+                {entity ? (
+                  <Card
+                    onClick={() => { setActiveEntityId(entity.id); onOpenChange(false); }}
+                    className="flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors hover:bg-accent/30"
+                    title="Switch to this entity's profile"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-card text-xs font-medium">
+                      {entity.initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{entity.name}</div>
+                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <span>{entity.relationship}</span>
+                        {entity.email && <><span>·</span><span className="normal-case truncate">{entity.email}</span></>}
+                      </div>
+                    </div>
+                    <UserCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Card>
+                ) : (
+                  <div className="text-xs text-muted-foreground">Not assigned to any entity.</div>
+                )}
+              </section>
+
+              <Separator />
+
+              {/* 2. Extracted facts (FieldRecord candidates sourced from this doc) */}
+              <section className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className={tx.microcap}>Extracted facts</span>
+                  <span className={tx.muted}>{facts.length}</span>
                 </div>
+                {facts.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">No fields were extracted from this document.</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {facts.map((f) => (
+                      <Card key={f.fieldKey} className="space-y-0.5 px-2.5 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.label}</span>
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline">{f.confidence}</Badge>
+                            {f.conflicted && (
+                              <Badge variant="muted" className="gap-1">
+                                <AlertTriangle className="h-2.5 w-2.5" /> conflict
+                              </Badge>
+                            )}
+                            {f.page && <Badge variant="muted">p.{f.page}</Badge>}
+                          </div>
+                        </div>
+                        <div className="font-mono text-xs">{f.value}</div>
+                        {f.excerpt && (
+                          <div className="line-clamp-2 text-[10px] italic text-muted-foreground">
+                            "{f.excerpt}"
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* 3. Repeating records — education + experience from this doc */}
+              {education.length > 0 && (
+                <>
+                  <Separator />
+                  <section className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className={tx.microcap}>Education from this document</span>
+                      <span className={tx.muted}>{education.length}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {education.map((e) => (
+                        <Card key={e.id} className="px-2.5 py-1.5 text-xs">
+                          <div className="font-medium">
+                            {e.degree ?? "Degree"}{e.field ? ` in ${e.field}` : ""}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {e.institution}
+                            {e.endDate ? ` · ${e.endDate}` : e.startDate ? ` · since ${e.startDate}` : ""}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </section>
+                </>
               )}
-            </ScrollArea>
-          </div>
+
+              {experience.length > 0 && (
+                <>
+                  <Separator />
+                  <section className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className={tx.microcap}>Experience from this document</span>
+                      <span className={tx.muted}>{experience.length}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {experience.map((e) => (
+                        <Card key={e.id} className="px-2.5 py-1.5 text-xs">
+                          <div className="font-medium">{e.role}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {e.company}
+                            {e.endDate ? ` · until ${e.endDate}` : e.startDate ? ` · since ${e.startDate}` : ""}
+                            {e.location ? ` · ${e.location}` : ""}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+
+              <Separator />
+
+              {/* 4. Raw extracted text */}
+              <section className="space-y-1.5">
+                <span className={tx.microcap}>Raw extracted text</span>
+                {doc.text.trim().length > 0 ? (
+                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded border bg-muted/40 px-2.5 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    {doc.text}
+                  </pre>
+                ) : (
+                  <div className="text-xs text-muted-foreground">
+                    No text was extracted. May be a scanned file where OCR returned nothing.
+                  </div>
+                )}
+              </section>
+
+            </div>
+          </ScrollArea>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function buildDocFacts(profile: Profile, docId: string): DocFact[] {
+  const out: DocFact[] = [];
+  for (const record of Object.values(profile)) {
+    if (!record) continue;
+    const cand = record.candidates.find((c) => c.source.documentId === docId && !c.dismissedAt);
+    if (!cand) continue;
+    const canonical = canonicalValue(record);
+    out.push({
+      fieldKey: record.key,
+      label: fieldByKey(record.key).label,
+      value: cand.value,
+      confidence: cand.confidence,
+      excerpt: cand.source.excerpt,
+      page: cand.source.page,
+      conflicted: record.conflictState !== "none" && cand.id !== canonical?.id,
+    });
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function NoPreview({ text }: { text: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center">
+      <div className="max-w-xs text-sm text-muted-foreground">{text}</div>
+    </div>
   );
 }
