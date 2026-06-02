@@ -198,6 +198,24 @@ export function Documents() {
         bytes: job.size, text, pageCount, docType, ocrUsed,
         mimeType, filePath, fileDataUrl,
       };
+      // Final write-time guard: refuse to save when a doc with the
+      // same (entityId, name, bytes) already exists. This is the last
+      // line of defense against any concurrent / racing import. Note
+      // entityId is only known here — the upstream dedup uses
+      // (name, bytes), which can let through a re-tag, so we re-check.
+      const existing = await storage.listDocuments();
+      const dupe = existing.find((d) =>
+        d.entityId === entity.id && d.name === job.fileName && d.bytes === job.size,
+      );
+      if (dupe) {
+        updateJob(id, { state: "done", progress: 1, message: "Duplicate — skipped" });
+        setTimeout(() => setJobs((js) => {
+          const next = js.filter((j) => j.id !== id);
+          jobsRef.current = next;
+          return next;
+        }), 2500);
+        return;
+      }
       await storage.saveDocument(doc);
       const withEntity: FieldCandidate[] = candidates.map((c) => ({ ...c, entityId: entity.id }));
       if (withEntity.length) await addCandidates(storage, withEntity);
@@ -272,18 +290,23 @@ export function Documents() {
 
   function handleFiles(files: FileList | null) {
     if (!files) return;
-    // Drop anything already queued / in-progress by (name, size). A
-    // single click should never enqueue the same physical file twice
-    // even if the event bubbles or the user multi-selects accidentally.
+    // Three layers of dedup:
+    //   1. Same call: a single drop / picker session can list the
+    //      same file once.
+    //   2. In-flight jobs: skip files already queued or processing.
+    //   3. Already-imported (recent): skip files whose (name, bytes)
+    //      match an existing document — the strongest guard, and
+    //      catches re-drops after auto-dismissed "done" jobs.
     const inflight = new Set(
       jobsRef.current
-        .filter((j) => j.state !== "done" && j.state !== "error")
+        .filter((j) => j.state !== "error")
         .map((j) => `${j.fileName}|${j.size}`),
     );
+    const alreadyImported = new Set(documents.map((d) => `${d.name}|${d.bytes}`));
     const newJobs: ImportJob[] = Array.from(files)
       .filter((file) => {
         const key = `${file.name}|${file.size}`;
-        if (inflight.has(key)) return false;
+        if (inflight.has(key) || alreadyImported.has(key)) return false;
         inflight.add(key);
         return true;
       })
@@ -296,11 +319,11 @@ export function Documents() {
         progress: 0,
       }));
     if (newJobs.length === 0) return;
-    setJobs((js) => {
-      const next = [...js, ...newJobs];
-      jobsRef.current = next;
-      return next;
-    });
+    // Mutate the ref synchronously so the very next handleFiles call
+    // (e.g., bubbled event, StrictMode double-render) sees these jobs.
+    // The setJobs updater would defer this until React commits.
+    jobsRef.current = [...jobsRef.current, ...newJobs];
+    setJobs(jobsRef.current);
     void processNext();
   }
 
