@@ -10,4 +10,5 @@ export * from "./messages";
 export * from "./crypto";
 export * from "./qa";
 export * from "./vault-crypto";
+export * from "./derive";
 export { indexedDbAdapter } from "./adapters/indexeddb-adapter";

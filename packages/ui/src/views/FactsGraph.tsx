@@ -16,7 +16,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Check, FileText, Pencil, ScanLine, Users, X } from "lucide-react";
 import {
-  addUserCandidate, canonicalValue, dismissCandidate, fieldByKey, initialsFor, normalizeValue,
+  addUserCandidate, canonicalValue, deriveFacts, derivedRelationshipEdges,
+  dismissCandidate, fieldByKey, initialsFor, normalizeValue,
   type ConflictState, type Entity, type FieldRecord, type ProfileKey,
   type StoredDocument, type VaultProfile,
 } from "@octovault/core";
@@ -88,11 +89,16 @@ export function FactsGraph() {
     [storage, readOnly, refresh]
   );
 
+  const derived = useMemo(
+    () => deriveFacts({ entities, vault }),
+    [entities, vault]
+  );
+
   const { initialNodes, initialEdges } = useMemo(
     () => viewMode === "entity"
-      ? buildGraphByEntity(entities, vault, onSaveFact)
+      ? buildGraphByEntity(entities, vault, onSaveFact, derivedRelationshipEdges(derived))
       : buildGraph(documents, entities, vault, onSaveFact, onDeleteCandidate),
-    [viewMode, documents, entities, vault, onSaveFact, onDeleteCandidate]
+    [viewMode, documents, entities, vault, onSaveFact, onDeleteCandidate, derived]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -255,6 +261,7 @@ function buildGraphByEntity(
   entities: Entity[],
   vault: VaultProfile,
   onSaveFact: (entityId: string, key: ProfileKey, next: string) => Promise<void>,
+  derivedEdges: import("@octovault/core").DerivedFact[] = [],
 ): { initialNodes: Node[]; initialEdges: Edge[] } {
   const COL_WIDTH = 320;
   const ROW_HEIGHT = 60;
@@ -331,6 +338,30 @@ function buildGraphByEntity(
       });
     });
   });
+
+  // Derived relationship edges (computed by derive.ts):
+  // co-parent, sibling, parent-in-law, sibling-in-law, grandparent.
+  // Rendered with a dotted line so the user knows they're inferred,
+  // not asserted.
+  for (const d of derivedEdges) {
+    if (!d.object) continue;
+    edges.push({
+      id: `e-derived:${d.id}`,
+      source: `entity:${d.subject}`,
+      target: `entity:${d.object}`,
+      type: "smoothstep",
+      label: `${d.kind.replace(/-/g, " ")} (derived)`,
+      labelStyle: { fontSize: 9, fill: "hsl(var(--muted-foreground))", fontStyle: "italic" },
+      labelBgStyle: { fill: "hsl(var(--background))" },
+      labelBgPadding: [4, 2],
+      style: {
+        stroke: "hsl(var(--muted-foreground))",
+        strokeOpacity: 0.6,
+        strokeWidth: 1,
+        strokeDasharray: "1 4",
+      },
+    });
+  }
 
   // Family relationship edges between entities.
   for (const e of entities) {
