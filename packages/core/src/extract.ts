@@ -4,6 +4,7 @@
 
 import { generateJson, type OllamaConfig } from "./ollama";
 import { normalizeValue } from "./resolver";
+import { sanitizeCandidates, sanitizeEntityName, type SanitizationReport } from "./sanitize";
 import {
   PROFILE_FIELDS,
   type DocType,
@@ -141,6 +142,9 @@ export interface ExtractionResult {
   candidates: Omit<FieldCandidate, "entityId">[];
   education: Omit<EducationRecord, "entityId">[];
   experience: Omit<ExperienceRecord, "entityId">[];
+  // What sanitization did to the raw LLM output. Useful for the
+  // import-progress UI and for debugging extraction quality.
+  sanitization?: SanitizationReport;
 }
 
 export async function extractFromText(
@@ -200,7 +204,7 @@ Rules:
     format: extractionSchema(),  // Ollama 0.5+ structured outputs
   });
   const docType: DocType = DOC_TYPES.includes(raw.docType) ? raw.docType : "unknown";
-  const entityName = (raw.entityName ?? "").trim() || null;
+  const entityName = sanitizeEntityName((raw.entityName ?? "").trim() || null);
   const relationshipHint = raw.relationshipHint && RELATIONSHIPS.includes(raw.relationshipHint)
     ? raw.relationshipHint : undefined;
 
@@ -257,5 +261,11 @@ Rules:
       userEdited: false,
     }));
 
-  return { docType, entityName, relationshipHint, candidates, education, experience };
+  const { kept, report } = sanitizeCandidates(candidates);
+  return {
+    docType, entityName, relationshipHint,
+    candidates: kept,
+    education, experience,
+    sanitization: report,
+  };
 }

@@ -11,4 +11,5 @@ export * from "./crypto";
 export * from "./qa";
 export * from "./vault-crypto";
 export * from "./derive";
+export * from "./sanitize";
 export { indexedDbAdapter } from "./adapters/indexeddb-adapter";

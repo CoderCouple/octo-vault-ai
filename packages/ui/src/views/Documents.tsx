@@ -173,8 +173,13 @@ export function Documents() {
       }
 
       updateJob(id, { state: "extracting", progress: 0.5, message: "Extracting fields" });
-      const { docType, candidates, education, experience, entityName, relationshipHint } =
+      const { docType, candidates, education, experience, entityName, relationshipHint, sanitization } =
         await host.extractFromText(docId, text);
+      if (sanitization && (sanitization.dropped || sanitization.downgraded)) {
+        updateJob(id, {
+          message: `Sanitized: ${sanitization.dropped} dropped, ${sanitization.downgraded} flagged low`,
+        });
+      }
 
       const entity = entityName
         ? await resolveEntityFromName(entityName, relationshipHint)
