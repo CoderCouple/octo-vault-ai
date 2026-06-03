@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Lock,
+  AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Loader2, Lock,
   Network, PanelRight, Pin, RotateCcw, ScanLine,
   ShieldCheck, Sparkles, Terminal, Trash2, Users, WifiOff,
 } from "lucide-react";
@@ -122,8 +122,18 @@ const MAC_DOWNLOADS = {
 
 function Hero() {
   const [arch, setArch] = useState<"arm64" | "x64">("arm64");
+  const [downloading, setDownloading] = useState(false);
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
+
+  // Show a spinner state for ~4s after click so users get instant
+  // feedback even though GitHub's redirect chain (latest → tag → CDN)
+  // takes a beat before the browser shows its own download UI.
+  function handleDownloadClick() {
+    setDownloading(true);
+    track("download_mac_clicked", { arch });
+    window.setTimeout(() => setDownloading(false), 4000);
+  }
 
   return (
     <section className="relative overflow-hidden bg-background">
@@ -161,11 +171,22 @@ function Hero() {
           <a
             href={dl.url}
             download
+            onClick={handleDownloadClick}
             data-attr={`cta-hero-download-mac-${arch}`}
-            className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
+            aria-busy={downloading}
+            className="inline-flex h-11 min-w-[230px] items-center justify-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
           >
-            <Download className="h-4 w-4" /> Download for Mac
-            <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
+            {downloading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Starting download…
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" /> Download for Mac
+                <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
+              </>
+            )}
           </a>
           <a
             href="#waitlist"
