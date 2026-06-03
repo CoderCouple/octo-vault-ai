@@ -52,6 +52,7 @@ const store = {
   deleteDocument:          (id: string)             => ipcRenderer.invoke("store.deleteDocument", id),
   getRecord:               (entityId: string, key: string) => ipcRenderer.invoke("store.getRecord", entityId, key),
   setRecord:               (entityId: string, record: unknown) => ipcRenderer.invoke("store.setRecord", entityId, record),
+  deleteRecord:            (entityId: string, key: string)     => ipcRenderer.invoke("store.deleteRecord", entityId, key),
   getProfile:              (entityId: string)       => ipcRenderer.invoke("store.getProfile", entityId),
   getAllProfiles:          ()                       => ipcRenderer.invoke("store.getAllProfiles"),
   clearProfile:            (entityId: string)       => ipcRenderer.invoke("store.clearProfile", entityId),

@@ -1,3 +1,9 @@
+// Side-panel renderer. Same React app as the (former) popup; the only
+// difference is the surface it mounts on. Chrome's side panel is a
+// persistent strip docked to the side of the browser window so the
+// user can keep OctoVault open while interacting with web pages and
+// form-fill targets.
+
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App, AppProvider } from "@octovault/ui";
@@ -8,9 +14,6 @@ import { extensionHost } from "../host";
 
 setPdfWorkerSrc(pdfWorkerUrl);
 
-// Bundled tesseract assets live in dist/tesseract/. Use chrome.runtime.getURL
-// so the URL is fully qualified (chrome-extension://<id>/tesseract/...) which
-// Web Workers and the extension sandbox can resolve.
 configureOcr({
   workerPath: chrome.runtime.getURL("tesseract/worker.min.js"),
   corePath: chrome.runtime.getURL("tesseract/tesseract-core-simd.wasm.js"),

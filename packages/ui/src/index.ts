@@ -9,3 +9,4 @@ export { Onboarding } from "./views/Onboarding";
 export { SensitivityGate, MaskedValue } from "./components/SensitivityGate";
 export { ThemeProvider, useTheme, type Theme } from "./components/theme";
 export { BRAND, tx, status } from "./lib/brand";
+export { OctoMark, OctoLockup } from "./components/octo-mark";

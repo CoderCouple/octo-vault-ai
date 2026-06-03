@@ -53,7 +53,7 @@
     --ring: 0 0% 72%;
   }
 
-  html, body, #root { height: 100%; }
+  html, body, #root { height: 100%; overflow-x: hidden; }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;

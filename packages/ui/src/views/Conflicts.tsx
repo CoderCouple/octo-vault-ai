@@ -1,8 +1,9 @@
 // Shows every field with more than one live candidate, grouped by
-// severity. User can pin the correct value or dismiss bad ones.
+// severity. User can pin the correct value, dismiss bad candidates,
+// or wipe the whole FieldRecord when every candidate is bad.
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Pin, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Eraser, Pin, Trash2 } from "lucide-react";
 import {
   canonicalValue, dismissCandidate, fieldByKey, pinCandidate,
   type FieldRecord, type Profile,
@@ -11,11 +12,16 @@ import { useAppContext } from "../context";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { cn } from "../lib/utils";
 
 export function Conflicts() {
   const { storage, documents, readOnly, activeEntityId } = useAppContext();
   const [profile, setProfile] = useState<Profile>({});
+  const [pendingFieldDelete, setPendingFieldDelete] = useState<FieldRecord | null>(null);
 
   async function refresh() { setProfile(await storage.getProfile(activeEntityId)); }
   useEffect(() => { void refresh(); }, [storage, activeEntityId]);
@@ -36,6 +42,11 @@ export function Conflicts() {
   }
   async function drop(record: FieldRecord, candidateId: string) {
     await dismissCandidate(storage, activeEntityId, record.key, candidateId);
+    await refresh();
+  }
+  async function confirmDeleteField(record: FieldRecord) {
+    setPendingFieldDelete(null);
+    await storage.deleteRecord(activeEntityId, record.key);
     await refresh();
   }
 
@@ -65,7 +76,8 @@ export function Conflicts() {
             a serious data problem.
           </p>
           {redFlags.map((r) => (
-            <ConflictCard key={r.key} record={r} docName={docName} onPin={pin} onDrop={drop} readOnly={readOnly} />
+            <ConflictCard key={r.key} record={r} docName={docName} onPin={pin} onDrop={drop}
+              onDeleteField={() => setPendingFieldDelete(r)} readOnly={readOnly} />
           ))}
         </section>
       )}
@@ -74,21 +86,50 @@ export function Conflicts() {
         <section className="space-y-2">
           <div className="text-xs font-medium">To review ({others.length})</div>
           {others.map((r) => (
-            <ConflictCard key={r.key} record={r} docName={docName} onPin={pin} onDrop={drop} readOnly={readOnly} />
+            <ConflictCard key={r.key} record={r} docName={docName} onPin={pin} onDrop={drop}
+              onDeleteField={() => setPendingFieldDelete(r)} readOnly={readOnly} />
           ))}
         </section>
       )}
+
+      <AlertDialog open={!!pendingFieldDelete} onOpenChange={(o) => !o && setPendingFieldDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {pendingFieldDelete ? fieldByKey(pendingFieldDelete.key).label : "field"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Wipes every candidate for this field — including the canonical value. The
+              source documents stay intact, so a re-extract or a new import can repopulate
+              the field cleanly.
+            </AlertDialogDescription>
+            {pendingFieldDelete && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {pendingFieldDelete.candidates.filter((c) => !c.dismissedAt).length} candidate
+                {pendingFieldDelete.candidates.filter((c) => !c.dismissedAt).length === 1 ? "" : "s"} will be removed.
+              </p>
+            )}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => pendingFieldDelete && void confirmDeleteField(pendingFieldDelete)}>
+              Delete field
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 function ConflictCard({
-  record, docName, onPin, onDrop, readOnly,
+  record, docName, onPin, onDrop, onDeleteField, readOnly,
 }: {
   record: FieldRecord;
   docName: (id: string) => string;
   onPin: (r: FieldRecord, id: string) => void;
   onDrop: (r: FieldRecord, id: string) => void;
+  onDeleteField: () => void;
   readOnly: boolean;
 }) {
   const field = fieldByKey(record.key);
@@ -104,7 +145,15 @@ function ConflictCard({
     <Card className={cn("space-y-2 p-3", stateClass)}>
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium">{field.label}</div>
-        <Badge variant="outline">{record.conflictState.replace("_", " ")}</Badge>
+        <div className="flex items-center gap-1">
+          <Badge variant="outline">{record.conflictState.replace("_", " ")}</Badge>
+          {!readOnly && (
+            <Button size="icon" variant="ghost" onClick={onDeleteField}
+              title="Delete this field — wipe every candidate">
+              <Eraser className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5">
         {live.map((c) => {

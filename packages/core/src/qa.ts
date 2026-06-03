@@ -4,7 +4,7 @@
 
 import { embed, generate, type OllamaConfig } from "./ollama";
 import { canonicalValue } from "./resolver";
-import { fieldByKey, PROFILE_FIELDS } from "./schema";
+import { authorityFor, fieldByKey, PROFILE_FIELDS } from "./schema";
 import type { Entity, FieldRecord, Profile, ProfileKey, VaultProfile } from "./schema";
 import type { StoredDocument } from "./storage";
 
@@ -99,6 +99,85 @@ export function cosine(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
+// --- Rerank ---
+// Cosine-top-K alone over-picks near-duplicate chunks from the same
+// page and ignores everything we already know about the data. The
+// rerank pass blends in three deterministic signals — no extra LLM
+// call, no extra round-trip:
+//
+//   • factBoost      — facts (label: value) are denser than chunks.
+//   • recency        — newer documents win on a 1-year half-life.
+//   • authority      — for facts, multiply by DOC_AUTHORITY (a passport
+//                      is more authoritative for passportNumber than a
+//                      paystub is).
+//
+// Then MMR diversifies the final cut so we don't return five chunks
+// from the same paragraph.
+const FACT_BOOST = 0.05;
+const RECENCY_WEIGHT = 0.1;
+const RECENCY_HALF_LIFE_DAYS = 365;
+const AUTHORITY_WEIGHT = 0.1;
+const MMR_LAMBDA = 0.7;
+const INITIAL_POOL_MULTIPLIER = 3;
+const MIN_INITIAL_POOL = 12;
+
+interface Scored { e: EmbeddingRecord; score: number; }
+
+function recencyBoost(e: EmbeddingRecord, lookup: ProfileLookup, now: number): number {
+  const doc = lookup.documents.find((d) => d.id === e.documentId);
+  if (!doc) return 0;
+  const ageDays = (now - doc.importedAt) / (1000 * 60 * 60 * 24);
+  return Math.exp(-ageDays / RECENCY_HALF_LIFE_DAYS);
+}
+
+function authorityBoost(e: EmbeddingRecord, lookup: ProfileLookup): number {
+  if (e.kind !== "fact" || !e.fieldKey) return 0;
+  const doc = lookup.documents.find((d) => d.id === e.documentId);
+  if (!doc) return 0;
+  return authorityFor(doc.docType, e.fieldKey);
+}
+
+export function rerank(
+  scored: Scored[],
+  lookup: ProfileLookup,
+  topK: number,
+  now: number = Date.now(),
+): Scored[] {
+  const blended = scored.map(({ e, score }) => ({
+    e,
+    score:
+      score
+      + (e.kind === "fact" ? FACT_BOOST : 0)
+      + RECENCY_WEIGHT * recencyBoost(e, lookup, now)
+      + AUTHORITY_WEIGHT * authorityBoost(e, lookup),
+  })).sort((a, b) => b.score - a.score);
+
+  // MMR: greedily pick the next item that maximizes
+  //   λ · relevance − (1 − λ) · maxSimilarityToAlreadyPicked
+  const picked: Scored[] = [];
+  const remaining = [...blended];
+  while (picked.length < topK && remaining.length > 0) {
+    if (picked.length === 0) {
+      picked.push(remaining.shift()!);
+      continue;
+    }
+    let bestIdx = 0;
+    let bestMmr = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const r = remaining[i];
+      let maxSim = 0;
+      for (const p of picked) {
+        const sim = cosine(r.e.vector, p.e.vector);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const mmr = MMR_LAMBDA * r.score - (1 - MMR_LAMBDA) * maxSim;
+      if (mmr > bestMmr) { bestMmr = mmr; bestIdx = i; }
+    }
+    picked.push(remaining.splice(bestIdx, 1)[0]);
+  }
+  return picked;
+}
+
 // --- Build embedding rows from a single freshly-imported document ---
 export async function buildEmbeddingsForDocument(
   engine: QaEngine,
@@ -190,10 +269,16 @@ export async function ask(
     : question;
 
   // Embed the (possibly rewritten) query and rank.
+  // Two-stage: cosine narrows down to a wider initial pool, then
+  // rerank() blends in fact/recency/authority signals and MMR-
+  // diversifies to topK. The wider initial pool gives MMR room to
+  // swap a near-duplicate for a more diverse result.
   const qVec = await engine.embed(retrievalQuery);
-  const scored = pool.map((e) => ({ e, score: cosine(qVec, e.vector) }))
+  const initialPoolSize = Math.max(topK * INITIAL_POOL_MULTIPLIER, MIN_INITIAL_POOL);
+  const initial = pool.map((e) => ({ e, score: cosine(qVec, e.vector) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+    .slice(0, initialPoolSize);
+  const scored = rerank(initial, lookup, topK);
 
   const retrieved = scored.map((s) => s.e);
 

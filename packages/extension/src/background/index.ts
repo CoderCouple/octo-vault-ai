@@ -13,6 +13,14 @@ const DESKTOP_OLLAMA_PROXY = "http://127.0.0.1:53117/ollama";
 
 chrome.runtime.onInstalled.addListener(() => console.log("[OctoVault] installed"));
 
+// Open the side panel when the toolbar icon is clicked. Set once at
+// startup; Chrome remembers the behaviour for the lifetime of the
+// extension. Without this the action click is a no-op (we removed
+// default_popup in the manifest).
+void chrome.sidePanel
+  ?.setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((err: unknown) => console.warn("[OctoVault] sidePanel setup failed:", err));
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   handle(msg)
     .then((data) => sendResponse({ ok: true, data }))

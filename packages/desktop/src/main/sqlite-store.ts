@@ -210,6 +210,9 @@ export const store = {
     requireDb().prepare("INSERT INTO field_records(key, entity_id, field_key, data) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data")
       .run(key, entityId, record.key, JSON.stringify(record));
   },
+  deleteRecord(entityId: string, fieldKey: string) {
+    requireDb().prepare("DELETE FROM field_records WHERE key = ?").run(`${entityId}|${fieldKey}`);
+  },
   getProfile(entityId: string) {
     const rows = requireDb().prepare("SELECT field_key, data FROM field_records WHERE entity_id = ?").all(entityId) as { field_key: string; data: string }[];
     const out: Record<string, unknown> = {};

@@ -85,7 +85,9 @@ function VaultGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// --- Popup (extension) — keep existing top tabs since 400px is too narrow for a sidebar.
+// --- Side panel (extension) — fills the panel's full height; width
+// follows whatever the user has dragged the panel to. Tabs are still
+// across the top because the panel is too narrow for a left sidebar.
 
 function PopupLayout() {
   const { host, settings } = useAppContext();
@@ -105,7 +107,7 @@ function PopupLayout() {
   }, [ctxEntities]);
 
   return (
-    <div className="flex h-[600px] w-[400px] flex-col">
+    <div className="flex h-screen w-full flex-col overflow-x-hidden">
       <header className="flex items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <OctoMark className="h-4 w-4" />
@@ -127,7 +129,7 @@ function PopupLayout() {
             <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
           </TabsList>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <TabsContent value="documents" className="m-0 h-full"><Documents /></TabsContent>
           <TabsContent value="profile"   className="m-0 h-full"><ProfileView /></TabsContent>
           <TabsContent value="conflicts" className="m-0 h-full"><Conflicts /></TabsContent>

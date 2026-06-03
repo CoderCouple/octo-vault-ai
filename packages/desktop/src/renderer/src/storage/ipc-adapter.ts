@@ -32,6 +32,7 @@ export const ipcStorageAdapter: StorageAdapter = {
 
   async getRecord(entityId, key) { return safe(() => s().getRecord(entityId, key) as Promise<FieldRecord | undefined>, undefined); },
   async setRecord(entityId, record) { await s().setRecord(entityId, record); },
+  async deleteRecord(entityId, key) { await s().deleteRecord(entityId, key); },
   async getProfile(entityId) { return safe(() => s().getProfile(entityId) as Promise<Profile>, {}); },
   async getAllProfiles() { return safe(() => s().getAllProfiles() as Promise<VaultProfile>, {}); },
   async clearProfile(entityId) { await s().clearProfile(entityId); },

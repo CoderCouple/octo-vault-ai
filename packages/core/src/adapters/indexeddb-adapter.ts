@@ -156,6 +156,7 @@ export const indexedDbAdapter: StorageAdapter = {
   // --- Records ---
   async getRecord(entityId, key) { return getValue<FieldRecord>(recordStore, recordKey(entityId, key)); },
   async setRecord(entityId, record) { await putValue(recordStore, recordKey(entityId, record.key), record); },
+  async deleteRecord(entityId, key) { await del(recordKey(entityId, key), recordStore); },
 
   async getProfile(entityId) {
     const ks = (await keys(recordStore)) as string[];

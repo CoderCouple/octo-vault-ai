@@ -211,6 +211,7 @@ ipcMain.handle("store.getDocument",             (_e, id) => whenOpen(() => vault
 ipcMain.handle("store.deleteDocument",          (_e, id) => whenOpen(() => vault.store.deleteDocument(id), null));
 ipcMain.handle("store.getRecord",               (_e, entityId, key) => whenOpen(() => vault.store.getRecord(entityId, key), null));
 ipcMain.handle("store.setRecord",               (_e, entityId, record) => whenOpen(() => vault.store.setRecord(entityId, record), null));
+ipcMain.handle("store.deleteRecord",            (_e, entityId, key) => whenOpen(() => vault.store.deleteRecord(entityId, key), null));
 ipcMain.handle("store.getProfile",              (_e, entityId) => whenOpen(() => vault.store.getProfile(entityId), {}));
 ipcMain.handle("store.getAllProfiles",          () => whenOpen(() => vault.store.getAllProfiles(), {}));
 ipcMain.handle("store.clearProfile",            (_e, entityId) => whenOpen(() => vault.store.clearProfile(entityId), null));

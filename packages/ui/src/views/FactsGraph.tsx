@@ -10,11 +10,11 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ReactFlow, Background, Controls, Handle, Position, MarkerType,
   BaseEdge, EdgeLabelRenderer, getSmoothStepPath,
-  useNodesState, useEdgesState,
+  useNodesState, useEdgesState, useReactFlow, ReactFlowProvider,
   type Node, type Edge, type NodeProps, type EdgeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Check, FileText, Pencil, ScanLine, Users, X } from "lucide-react";
+import { Check, FileText, LayoutGrid, Pencil, ScanLine, Users, X } from "lucide-react";
 import {
   addUserCandidate, canonicalValue, deriveFacts, derivedRelationshipEdges,
   dismissCandidate, fieldByKey, initialsFor, normalizeValue,
@@ -57,6 +57,14 @@ type ViewMode = "source" | "entity";
 const VIEW_KEY = "octovault.factsGraph.viewMode";
 
 export function FactsGraph() {
+  return (
+    <ReactFlowProvider>
+      <FactsGraphInner />
+    </ReactFlowProvider>
+  );
+}
+
+function FactsGraphInner() {
   const { storage, documents, readOnly, entities } = useAppContext();
   const [vault, setVault] = useState<VaultProfile>({});
   const [viewMode, setViewModeState] = useState<ViewMode>(
@@ -103,9 +111,17 @@ export function FactsGraph() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const reactFlow = useReactFlow();
 
   useEffect(() => { setNodes(initialNodes); setEdges(initialEdges); },
     [initialNodes, initialEdges, setNodes, setEdges]);
+
+  const autoLayout = useCallback(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+    // Re-fit the viewport on next tick after the new positions paint.
+    requestAnimationFrame(() => reactFlow.fitView({ padding: 0.15, duration: 300 }));
+  }, [initialNodes, initialEdges, setNodes, setEdges, reactFlow]);
 
   const onNodeClick = useCallback((_e: unknown, node: Node) => {
     setNodes((ns) =>
@@ -147,6 +163,14 @@ export function FactsGraph() {
           )}
         >
           <Users className="h-3 w-3" /> By entity
+        </button>
+        <div className="mx-0.5 h-4 w-px bg-border" />
+        <button
+          onClick={autoLayout}
+          title="Re-layout — reset positions and fit to view"
+          className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors hover:bg-accent/50"
+        >
+          <LayoutGrid className="h-3 w-3" /> Re-layout
         </button>
       </div>
 

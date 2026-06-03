@@ -85,6 +85,10 @@ export interface StorageAdapter {
   // Fields. Keys are (entityId, fieldKey).
   getRecord(entityId: string, key: ProfileKey): Promise<FieldRecord | undefined>;
   setRecord(entityId: string, record: FieldRecord): Promise<void>;
+  // Wipe one FieldRecord wholesale — every candidate, canonical and all.
+  // Used by Conflicts when every value for a field is bad and the user
+  // wants to start over without re-importing.
+  deleteRecord(entityId: string, key: ProfileKey): Promise<void>;
   getProfile(entityId: string): Promise<Profile>;
   getAllProfiles(): Promise<VaultProfile>;
   clearProfile(entityId: string): Promise<void>;

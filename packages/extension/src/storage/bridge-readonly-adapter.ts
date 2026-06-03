@@ -78,6 +78,7 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   },
   async getAllProfiles() { return get<VaultProfile>("/profile", {}); },
   async setRecord(_e, _r) { throw new ReadOnlyError(); },
+  async deleteRecord(_e, _k) { throw new ReadOnlyError(); },
   async clearProfile(_e) { throw new ReadOnlyError(); },
   async deleteCandidatesFromDoc(_id) { throw new ReadOnlyError(); },
 
