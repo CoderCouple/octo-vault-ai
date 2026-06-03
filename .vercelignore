@@ -1,0 +1,43 @@
+# Vercel builds the landing package only. Everything below is irrelevant
+# weight at upload time (Electron release binaries, native module builds,
+# extension bundles, local DBs, OS junk).
+
+# Other packages' build artifacts
+packages/desktop/release
+packages/desktop/out
+packages/desktop/dist
+packages/desktop/build
+packages/extension/dist
+packages/extension/build
+packages/landing/dist
+
+# Native module rebuild artifacts
+**/*.node
+**/*.o
+**/*.so
+
+# Distributable binaries
+**/*.dmg
+**/*.dmg.blockmap
+**/*.zip.blockmap
+**/*.AppImage
+**/*.exe
+**/*.snap
+**/*.deb
+mac
+mac-arm64
+win-unpacked
+
+# Local databases / vaults
+**/*.octovault
+**/vault.db
+**/vault.db-journal
+**/vault.db-wal
+**/vault.db-shm
+
+# Caches and editor noise
+.turbo
+.cache
+.idea
+.vscode
+.DS_Store
