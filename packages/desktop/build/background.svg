@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 380" width="540" height="380">
+  <!-- Soft monochrome background, brand-aligned -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#fafafa"/>
+      <stop offset="100%" stop-color="#f0f0f0"/>
+    </linearGradient>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#0a0a0a" fill-opacity="0.06"/>
+    </pattern>
+  </defs>
+  <rect width="540" height="380" fill="url(#bg)"/>
+  <rect width="540" height="380" fill="url(#dots)"/>
+
+  <!-- Tiny OctoMark logo, top-left -->
+  <g transform="translate(20 20) scale(1.0)">
+    <polygon points="7,1.5 17,1.5 22.5,7 22.5,17 17,22.5 7,22.5 1.5,17 1.5,7"
+             fill="none" stroke="#0a0a0a" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="12" cy="11" r="1.85" fill="#0a0a0a"/>
+    <path d="M11 12.5 L11 16.25 L13 16.25 L13 12.5 Z" fill="#0a0a0a"/>
+  </g>
+  <text x="50" y="36" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a">OctoVault AI</text>
+
+  <!-- Step 1: drag OctoVault to Applications -->
+  <text x="270" y="95" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a" text-anchor="middle">
+    1. Drag OctoVault to Applications
+  </text>
+
+  <!-- Subtle arrow between the two item slots (left → right at y≈180) -->
+  <g stroke="#0a0a0a" stroke-opacity="0.35" fill="none" stroke-width="2" stroke-linecap="round">
+    <line x1="220" y1="180" x2="320" y2="180"/>
+    <polyline points="310,170 320,180 310,190"/>
+  </g>
+
+  <!-- Step 2: double-click Install.command -->
+  <text x="270" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a" text-anchor="middle">
+    2. Then double-click Install.command ↓
+  </text>
+  <text x="270" y="290" font-family="system-ui, -apple-system, sans-serif" font-size="10.5" fill="#525252" text-anchor="middle">
+    (one-time Gatekeeper unlock — beta isn't code-signed yet)
+  </text>
+</svg>

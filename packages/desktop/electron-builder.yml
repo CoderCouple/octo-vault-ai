@@ -40,19 +40,28 @@ mac:
 
 dmg:
   title: ${productName}
-  # Window layout for the drag-to-Applications view.
+  background: build/background.png
+  # Window layout for the drag-to-Applications view. The background image
+  # has labels positioned to align with these item slots — keep them in
+  # sync if you re-design the background.
   window:
     width: 540
     height: 380
   contents:
-    - x: 140
-      y: 200
+    # Step 1 row: drag OctoVault.app → Applications.
+    - x: 130
+      y: 170
       type: file
-    - x: 400
-      y: 200
+    - x: 410
+      y: 170
       type: link
       path: /Applications
-  background: null
+    # Step 2: clickable Gatekeeper unlock — removes com.apple.quarantine
+    # so the user doesn't get the "OctoVault is damaged" warning.
+    - x: 270
+      y: 310
+      type: file
+      path: build/Install.command
 
 win:
   target:
