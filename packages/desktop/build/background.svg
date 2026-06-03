@@ -32,11 +32,12 @@
     <polyline points="310,190 320,200 310,210"/>
   </g>
 
-  <!-- First-launch hint -->
+  <!-- First-launch hint — Sequoia removed right-click → Open, so the only
+       path for unsigned betas is Settings → Privacy & Security → Open Anyway. -->
   <text x="270" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#0a0a0a" text-anchor="middle">
-    First open: right-click OctoVault → Open
+    If macOS says "damaged" → Settings → Privacy &amp; Security
   </text>
   <text x="270" y="340" font-family="system-ui, -apple-system, sans-serif" font-size="10.5" fill="#525252" text-anchor="middle">
-    Unsigned beta — macOS asks once, then it's normal.
+    Scroll to "OctoVault blocked" → click "Open Anyway"
   </text>
 </svg>

@@ -215,9 +215,11 @@ function Hero() {
           </a>
         </p>
         {/* First-launch expectations — sets the user up so the Gatekeeper
-            prompt feels expected, not alarming. */}
+            prompt feels expected, not alarming. macOS Sequoia (15+) removed
+            the right-click → Open path; users now have to allow via System
+            Settings → Privacy & Security → "Open Anyway". */}
         <p className="mt-2 text-[11px] text-muted-foreground/80">
-          Unsigned beta — first open: <strong>right-click OctoVault → Open</strong>. macOS asks once, then launches normally.
+          Unsigned beta — if macOS blocks it, open <strong>System Settings → Privacy &amp; Security</strong> → click <strong>Open Anyway</strong>.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">

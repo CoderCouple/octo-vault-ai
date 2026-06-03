@@ -13,10 +13,18 @@ directories:
 files:
   - out/**/*
   - package.json
-  - "!node_modules/**/*"
+  # Native modules HAVE to be present at runtime — electron-builder pulls in
+  # production deps from package.json by default; the previous
+  # `!node_modules/**/*` was excluding them.
 
 asar: true
-asarUnpack: []
+# Native modules can't be loaded from inside an asar archive — the .node
+# file has to be on disk. asarUnpack moves matching paths to
+# Contents/Resources/app.asar.unpacked/ at package time.
+asarUnpack:
+  - "node_modules/better-sqlite3-multiple-ciphers/**/*"
+  - "node_modules/bindings/**/*"
+  - "node_modules/file-uri-to-path/**/*"
 
 # Disable auto-publish; you upload manually.
 publish: null
