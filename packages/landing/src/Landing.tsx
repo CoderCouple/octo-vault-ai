@@ -135,7 +135,7 @@ function Hero() {
   function handleDownloadClick() {
     setDownloading(true);
     track("download_mac_clicked", { arch });
-    window.setTimeout(() => setDownloading(false), 4000);
+    window.setTimeout(() => setDownloading(false), 5000);
   }
 
   return (
