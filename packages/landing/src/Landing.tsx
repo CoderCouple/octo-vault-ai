@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  AlertTriangle, ArrowRight, AtSign, Check, FileText, Github, Lock,
+  AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Lock,
   MessageSquare, Network, PanelRight, Pin, RotateCcw, ScanLine,
   ShieldCheck, Sparkles, Terminal, Trash2, Twitter, Users, WifiOff,
 } from "lucide-react";
@@ -119,21 +119,31 @@ function Hero() {
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
+            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest"
+            target="_blank"
+            rel="noreferrer"
+            data-attr="cta-hero-download-mac"
+            className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
+          >
+            <Download className="h-4 w-4" /> Download for Mac
+            <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
+          </a>
+          <a
             href="#waitlist"
             data-attr="cta-hero-waitlist"
-            className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
+            className="inline-flex h-11 items-center gap-2 rounded-md border border-border bg-card/70 px-6 text-[14px] font-medium backdrop-blur transition-colors hover:bg-accent"
           >
             Join the waitlist <ArrowRight className="h-4 w-4" />
           </a>
-          <a
-            href="https://github.com/CoderCouple/octo-vault-ai"
-            target="_blank"
-            rel="noreferrer"
-            data-attr="cta-hero-github"
-            className="inline-flex h-11 items-center gap-2 rounded-md border border-border bg-card/70 px-6 text-[14px] font-medium backdrop-blur transition-colors hover:bg-accent"
-          >
-            <Github className="h-4 w-4" /> Star on GitHub
-          </a>
+        </div>
+        {/* Platform availability — Mac is live, Windows/Linux are coming-soon. */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
+            <span className="size-1.5 rounded-full bg-muted-foreground/40" /> Windows · coming soon
+          </span>
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
+            <span className="size-1.5 rounded-full bg-muted-foreground/40" /> Linux · coming soon
+          </span>
         </div>
         <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[11.5px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
