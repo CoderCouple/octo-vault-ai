@@ -84,7 +84,47 @@ function Nav() {
 // Hero — big confident type + animated browser/side-panel mock
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Detects Apple Silicon vs Intel via the WebGL renderer string. Safari's
+// fingerprinting defences blank this out, in which case we default to
+// arm64 (the majority of new Macs since 2020).
+function detectMacArch(): "arm64" | "x64" {
+  if (typeof window === "undefined" || typeof document === "undefined") return "arm64";
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    if (!gl) return "arm64";
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    if (typeof renderer === "string") {
+      if (/Apple\s*(M[1-9]|VC|GPU)/i.test(renderer)) return "arm64";
+      if (/(Intel|AMD|NVIDIA|Radeon)/i.test(renderer)) return "x64";
+    }
+  } catch { /* ignored — fall through to default */ }
+  return "arm64";
+}
+
+const MAC_DOWNLOADS = {
+  arm64: {
+    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg",
+    label:  "Apple Silicon",
+    size:   "115 MB",
+    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg",
+    altLabel: "Intel Mac DMG",
+  },
+  x64: {
+    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg",
+    label:  "Intel Mac",
+    size:   "120 MB",
+    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg",
+    altLabel: "Apple Silicon DMG",
+  },
+} as const;
+
 function Hero() {
+  const [arch, setArch] = useState<"arm64" | "x64">("arm64");
+  useEffect(() => { setArch(detectMacArch()); }, []);
+  const dl = MAC_DOWNLOADS[arch];
+
   return (
     <section className="relative overflow-hidden bg-background">
       {/* Subtle grid backdrop, masked to fade at the edges. Pure border-color
@@ -119,9 +159,9 @@ function Hero() {
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
-            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg"
+            href={dl.url}
             download
-            data-attr="cta-hero-download-mac-arm64"
+            data-attr={`cta-hero-download-mac-${arch}`}
             className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
           >
             <Download className="h-4 w-4" /> Download for Mac
@@ -135,18 +175,24 @@ function Hero() {
             Join the waitlist <ArrowRight className="h-4 w-4" />
           </a>
         </div>
-        {/* Mac arch note + platform availability. The big button serves the
-            arm64 DMG; Intel users grab the x64 build from the small link. */}
+        {/* Arch detection note + alt download link. The primary button
+            tracks the visitor's Mac architecture; the alt link gives the
+            other build for anyone whose detection failed or mismatched. */}
         <p className="mt-3 text-[11.5px] text-muted-foreground">
-          Apple Silicon · 115 MB ·{" "}
+          {dl.label} · {dl.size} ·{" "}
           <a
-            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg"
+            href={dl.altUrl}
             download
-            data-attr="cta-hero-download-mac-intel"
+            data-attr={`cta-hero-download-mac-alt-${arch === "arm64" ? "x64" : "arm64"}`}
             className="underline underline-offset-2 hover:text-foreground"
           >
-            Intel Mac DMG
+            {dl.altLabel}
           </a>
+        </p>
+        {/* First-launch expectations — sets the user up so the Gatekeeper
+            prompt feels expected, not alarming. */}
+        <p className="mt-2 text-[11px] text-muted-foreground/80">
+          Unsigned beta — on first open, <span className="font-mono">double-click <strong>Install.command</strong></span> inside the DMG, or right-click the app → Open.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
