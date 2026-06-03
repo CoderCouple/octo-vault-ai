@@ -126,21 +126,15 @@ function Hero() {
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
 
-  // Cross-origin DMG download. The `download` attribute on <a> is
-  // ignored for cross-origin URLs and the iframe trick gets stuck on
-  // GitHub's redirect chain in some browsers. Simplest pattern that
-  // actually works everywhere: just navigate. The CDN response has
-  // `Content-Disposition: attachment`, so the browser starts a
-  // download and does NOT navigate the page away.
-  function triggerDownload(url: string) {
-    window.location.href = url;
-  }
-
-  function handleDownloadClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    e.preventDefault();
+  // Spinner-only handler — does NOT preventDefault. Lets the browser
+  // do its normal <a href download> thing (navigate to URL → see
+  // Content-Disposition: attachment → download). Earlier attempts to
+  // intercept with window.open / iframe / window.location.href all
+  // broke the download for various subtle reasons; the default link
+  // behaviour just works.
+  function handleDownloadClick() {
     setDownloading(true);
     track("download_mac_clicked", { arch });
-    triggerDownload(dl.url);
     window.setTimeout(() => setDownloading(false), 4000);
   }
 
@@ -179,6 +173,7 @@ function Hero() {
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
             href={dl.url}
+            download
             onClick={handleDownloadClick}
             data-attr={`cta-hero-download-mac-${arch}`}
             aria-busy={downloading}
@@ -211,11 +206,8 @@ function Hero() {
           {dl.label} · {dl.size} ·{" "}
           <a
             href={dl.altUrl}
-            onClick={(e) => {
-              e.preventDefault();
-              track("download_mac_clicked", { arch: arch === "arm64" ? "x64" : "arm64", source: "alt" });
-              triggerDownload(dl.altUrl);
-            }}
+            download
+            onClick={() => track("download_mac_clicked", { arch: arch === "arm64" ? "x64" : "arm64", source: "alt" })}
             data-attr={`cta-hero-download-mac-alt-${arch === "arm64" ? "x64" : "arm64"}`}
             className="underline underline-offset-2 hover:text-foreground"
           >
