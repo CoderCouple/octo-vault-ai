@@ -2066,8 +2066,8 @@ const FOOTER_LINKS = {
   ],
   Trust: [
     ["100% on-device", "#verify"],
-    ["Open-weight models only", "#features"],
-    ["SQLCipher encrypted", "#features"],
+    ["Open-weight models only", "#faq"],
+    ["SQLCipher encrypted", "#verify"],
   ],
 } as const;
 
