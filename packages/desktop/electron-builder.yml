@@ -28,13 +28,15 @@ mac:
       arch:
         - arm64
         - x64
-  # Unsigned dev build. Users will see a Gatekeeper warning on first open
-  # (right-click → Open). Provide a real Developer ID before public release.
-  identity: null
+  # Ad-hoc signed dev build (identity "-" produces a signature locally).
+  # Combined with `xattr -dr com.apple.quarantine` on the .app after install,
+  # this resolves the "OctoVault is damaged" Gatekeeper message. For a
+  # public release that doesn't need the xattr step, replace with a real
+  # Apple Developer ID and notarize.
+  identity: "-"
   hardenedRuntime: false
   gatekeeperAssess: false
-  # Icon — drop a 1024x1024 .icns into build/icon.icns before release.
-  # icon: build/icon.icns
+  icon: build/icon.png
 
 dmg:
   title: ${productName}

@@ -8,6 +8,8 @@ dist/
 out/
 build/
 *.tsbuildinfo
+# Tracked build-resources dir (icons, entitlements) for electron-builder.
+!packages/desktop/build/
 
 # Electron build artifacts
 packages/desktop/dist/

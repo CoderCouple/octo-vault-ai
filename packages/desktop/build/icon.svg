@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Big Sur-style rounded square background, monochrome black to match the brand. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="#0a0a0a"/>
+  <!-- OctoMark (octagonal outline + stamp), scaled from the 24×24 brand SVG.
+       Scale = 640/24 ≈ 26.67; centred in the 1024 canvas via (1024−640)/2 = 192. -->
+  <g transform="translate(192 192) scale(26.6667)">
+    <polygon points="7,1.5 17,1.5 22.5,7 22.5,17 17,22.5 7,22.5 1.5,17 1.5,7"
+             fill="none" stroke="#fafafa" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="12" cy="11" r="1.85" fill="#fafafa"/>
+    <path d="M11 12.5 L11 16.25 L13 16.25 L13 12.5 Z" fill="#fafafa"/>
+  </g>
+</svg>
