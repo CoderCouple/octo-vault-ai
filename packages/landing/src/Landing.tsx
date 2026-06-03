@@ -126,12 +126,17 @@ function Hero() {
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
 
-  // Show a spinner state for ~4s after click so users get instant
-  // feedback even though GitHub's redirect chain (latest → tag → CDN)
-  // takes a beat before the browser shows its own download UI.
-  function handleDownloadClick() {
+  // Cross-origin downloads need explicit window.open — the `download`
+  // attribute on <a> is silently ignored by Chromium for cross-origin
+  // URLs, which causes the "click does nothing" failure mode. The new
+  // tab loads the GitHub redirect chain, hits the CDN response with
+  // Content-Disposition: attachment, downloads, then closes itself.
+  // Spinner sticks around for 4 s so the click clearly registered.
+  function handleDownloadClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
     setDownloading(true);
     track("download_mac_clicked", { arch });
+    window.open(dl.url, "_blank", "noopener,noreferrer");
     window.setTimeout(() => setDownloading(false), 4000);
   }
 
@@ -170,7 +175,6 @@ function Hero() {
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
             href={dl.url}
-            download
             onClick={handleDownloadClick}
             data-attr={`cta-hero-download-mac-${arch}`}
             aria-busy={downloading}
@@ -203,7 +207,11 @@ function Hero() {
           {dl.label} · {dl.size} ·{" "}
           <a
             href={dl.altUrl}
-            download
+            onClick={(e) => {
+              e.preventDefault();
+              track("download_mac_clicked", { arch: arch === "arm64" ? "x64" : "arm64", source: "alt" });
+              window.open(dl.altUrl, "_blank", "noopener,noreferrer");
+            }}
             data-attr={`cta-hero-download-mac-alt-${arch === "arm64" ? "x64" : "arm64"}`}
             className="underline underline-offset-2 hover:text-foreground"
           >
