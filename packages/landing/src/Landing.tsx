@@ -126,20 +126,14 @@ function Hero() {
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
 
-  // Cross-origin downloads: the `download` attribute on <a> is ignored
-  // for cross-origin URLs (MDN), and window.open(_blank) leaves the
-  // user staring at a stalled GitHub page when the redirect chain
-  // doesn't auto-progress in an unopened context. A hidden iframe is
-  // the most reliable cross-browser pattern: it loads the URL, the
-  // browser follows redirects, and when it hits the CDN response with
-  // Content-Disposition: attachment the download starts. The iframe
-  // never renders anything visible — the user stays on the page.
+  // Cross-origin DMG download. The `download` attribute on <a> is
+  // ignored for cross-origin URLs and the iframe trick gets stuck on
+  // GitHub's redirect chain in some browsers. Simplest pattern that
+  // actually works everywhere: just navigate. The CDN response has
+  // `Content-Disposition: attachment`, so the browser starts a
+  // download and does NOT navigate the page away.
   function triggerDownload(url: string) {
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    window.setTimeout(() => iframe.remove(), 60000);
+    window.location.href = url;
   }
 
   function handleDownloadClick(e: React.MouseEvent<HTMLAnchorElement>) {
