@@ -21,22 +21,22 @@
   </g>
   <text x="50" y="36" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a">OctoVault AI</text>
 
-  <!-- Step 1: drag OctoVault to Applications -->
-  <text x="270" y="95" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a" text-anchor="middle">
-    1. Drag OctoVault to Applications
+  <!-- Headline: drag OctoVault to Applications -->
+  <text x="270" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="600" fill="#0a0a0a" text-anchor="middle">
+    Drag OctoVault to Applications
   </text>
 
-  <!-- Subtle arrow between the two item slots (left → right at y≈180) -->
+  <!-- Subtle arrow between the two item slots (left → right at y≈200) -->
   <g stroke="#0a0a0a" stroke-opacity="0.35" fill="none" stroke-width="2" stroke-linecap="round">
-    <line x1="220" y1="180" x2="320" y2="180"/>
-    <polyline points="310,170 320,180 310,190"/>
+    <line x1="220" y1="200" x2="320" y2="200"/>
+    <polyline points="310,190 320,200 310,210"/>
   </g>
 
-  <!-- Step 2: double-click Install.command -->
-  <text x="270" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0a0a0a" text-anchor="middle">
-    2. Then double-click Install.command ↓
+  <!-- First-launch hint -->
+  <text x="270" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#0a0a0a" text-anchor="middle">
+    First open: right-click OctoVault → Open
   </text>
-  <text x="270" y="290" font-family="system-ui, -apple-system, sans-serif" font-size="10.5" fill="#525252" text-anchor="middle">
-    (one-time Gatekeeper unlock — beta isn't code-signed yet)
+  <text x="270" y="340" font-family="system-ui, -apple-system, sans-serif" font-size="10.5" fill="#525252" text-anchor="middle">
+    Unsigned beta — macOS asks once, then it's normal.
   </text>
 </svg>

@@ -48,20 +48,13 @@ dmg:
     width: 540
     height: 380
   contents:
-    # Step 1 row: drag OctoVault.app → Applications.
-    - x: 130
-      y: 170
+    - x: 140
+      y: 200
       type: file
-    - x: 410
-      y: 170
+    - x: 400
+      y: 200
       type: link
       path: /Applications
-    # Step 2: clickable Gatekeeper unlock — removes com.apple.quarantine
-    # so the user doesn't get the "OctoVault is damaged" warning.
-    - x: 270
-      y: 310
-      type: file
-      path: build/Install.command
 
 win:
   target:

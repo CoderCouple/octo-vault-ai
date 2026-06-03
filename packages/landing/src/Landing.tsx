@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Lock,
-  MessageSquare, Network, PanelRight, Pin, RotateCcw, ScanLine,
+  Network, PanelRight, Pin, RotateCcw, ScanLine,
   ShieldCheck, Sparkles, Terminal, Trash2, Users, WifiOff,
 } from "lucide-react";
 import {
@@ -192,7 +192,7 @@ function Hero() {
         {/* First-launch expectations — sets the user up so the Gatekeeper
             prompt feels expected, not alarming. */}
         <p className="mt-2 text-[11px] text-muted-foreground/80">
-          Unsigned beta — on first open, <span className="font-mono">double-click <strong>Install.command</strong></span> inside the DMG, or right-click the app → Open.
+          Unsigned beta — first open: <strong>right-click OctoVault → Open</strong>. macOS asks once, then launches normally.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
