@@ -126,17 +126,27 @@ function Hero() {
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
 
-  // Cross-origin downloads need explicit window.open — the `download`
-  // attribute on <a> is silently ignored by Chromium for cross-origin
-  // URLs, which causes the "click does nothing" failure mode. The new
-  // tab loads the GitHub redirect chain, hits the CDN response with
-  // Content-Disposition: attachment, downloads, then closes itself.
-  // Spinner sticks around for 4 s so the click clearly registered.
+  // Cross-origin downloads: the `download` attribute on <a> is ignored
+  // for cross-origin URLs (MDN), and window.open(_blank) leaves the
+  // user staring at a stalled GitHub page when the redirect chain
+  // doesn't auto-progress in an unopened context. A hidden iframe is
+  // the most reliable cross-browser pattern: it loads the URL, the
+  // browser follows redirects, and when it hits the CDN response with
+  // Content-Disposition: attachment the download starts. The iframe
+  // never renders anything visible — the user stays on the page.
+  function triggerDownload(url: string) {
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    window.setTimeout(() => iframe.remove(), 60000);
+  }
+
   function handleDownloadClick(e: React.MouseEvent<HTMLAnchorElement>) {
     e.preventDefault();
     setDownloading(true);
     track("download_mac_clicked", { arch });
-    window.open(dl.url, "_blank", "noopener,noreferrer");
+    triggerDownload(dl.url);
     window.setTimeout(() => setDownloading(false), 4000);
   }
 
@@ -210,7 +220,7 @@ function Hero() {
             onClick={(e) => {
               e.preventDefault();
               track("download_mac_clicked", { arch: arch === "arm64" ? "x64" : "arm64", source: "alt" });
-              window.open(dl.altUrl, "_blank", "noopener,noreferrer");
+              triggerDownload(dl.altUrl);
             }}
             data-attr={`cta-hero-download-mac-alt-${arch === "arm64" ? "x64" : "arm64"}`}
             className="underline underline-offset-2 hover:text-foreground"
