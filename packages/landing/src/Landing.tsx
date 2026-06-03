@@ -535,18 +535,48 @@ function HowItWorks() {
   );
 }
 
+// Each visual loops its own CSS keyframes — no JS, no deps, no global CSS.
+// Animation durations are coordinated so all three feel "alive" at the same
+// rhythm (~6s cycle).
+
 function StepDropVisual() {
   return (
     <div className="relative h-[140px] overflow-hidden rounded-lg border border-border bg-card p-3">
-      <div className="absolute inset-3 flex flex-col items-center justify-center rounded-md border border-dashed border-muted-foreground/60 text-center">
+      <style>{`
+        @keyframes step1-drop-passport {
+          0%        { transform: translate(70px, -45px) rotate(22deg); opacity: 0; }
+          12%, 68%  { transform: translate(0, 0) rotate(6deg); opacity: 1; }
+          82%       { transform: translate(-8px, 18px) rotate(-2deg); opacity: 0.5; }
+          95%, 100% { transform: translate(-20px, 50px) rotate(-12deg); opacity: 0; }
+        }
+        @keyframes step1-drop-license {
+          0%, 25%   { transform: translate(-55px, 35px) rotate(-18deg); opacity: 0; }
+          38%, 78%  { transform: translate(0, 0) rotate(-4deg); opacity: 1; }
+          90%       { transform: translate(12px, -12px) rotate(4deg); opacity: 0.5; }
+          100%      { transform: translate(28px, -32px) rotate(14deg); opacity: 0; }
+        }
+        @keyframes step1-zone-pulse {
+          0%, 100% { border-color: hsl(var(--muted-foreground) / 0.4); }
+          20%, 60% { border-color: hsl(var(--foreground) / 0.55); }
+        }
+      `}</style>
+      <div
+        className="absolute inset-3 flex flex-col items-center justify-center rounded-md border border-dashed text-center"
+        style={{ animation: "step1-zone-pulse 6s ease-in-out infinite" }}
+      >
         <FileText className="h-5 w-5 text-muted-foreground" />
         <p className="mt-1 text-[10px] text-muted-foreground">Drop PDFs or images</p>
       </div>
-      {/* Drifting doc tiles */}
-      <div className="absolute right-4 top-3 rotate-[6deg] rounded border border-border bg-background px-2 py-1 text-[9px] font-mono shadow-sm">
+      <div
+        className="absolute right-4 top-3 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] shadow-sm"
+        style={{ animation: "step1-drop-passport 6s ease-in-out infinite" }}
+      >
         passport.pdf
       </div>
-      <div className="absolute bottom-3 left-4 rotate-[-4deg] rounded border border-border bg-background px-2 py-1 text-[9px] font-mono shadow-sm">
+      <div
+        className="absolute bottom-3 left-4 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] shadow-sm"
+        style={{ animation: "step1-drop-license 6s ease-in-out infinite" }}
+      >
         license.jpg
       </div>
     </div>
@@ -555,33 +585,56 @@ function StepDropVisual() {
 
 function StepGraphVisual() {
   // Mini SVG knowledge graph: 2 docs + 4 facts + edges.
+  // Edges draw via stroke-dashoffset; nodes pop in with staggered delays.
   return (
     <div className="relative h-[140px] overflow-hidden rounded-lg border border-border bg-card">
+      <style>{`
+        @keyframes step2-edge-draw {
+          0%        { stroke-dashoffset: 200; opacity: 0; }
+          15%       { opacity: 1; }
+          50%, 80%  { stroke-dashoffset: 0; opacity: 1; }
+          100%      { stroke-dashoffset: 0; opacity: 0; }
+        }
+        @keyframes step2-node-pop {
+          0%        { opacity: 0; transform: scale(0.85); }
+          15%, 85%  { opacity: 1; transform: scale(1); }
+          100%      { opacity: 0; transform: scale(0.95); }
+        }
+        @keyframes step2-flag-pulse {
+          0%, 100%  { box-shadow: 0 0 0 0 hsl(var(--foreground) / 0); opacity: 0; transform: scale(0.85); }
+          25%, 85%  { opacity: 1; transform: scale(1); }
+          50%       { box-shadow: 0 0 0 4px hsl(var(--foreground) / 0.15); }
+        }
+        .step2-edge { stroke-dasharray: 200; animation: step2-edge-draw 6s ease-in-out infinite; }
+        .step2-node { animation: step2-node-pop 6s ease-in-out infinite; opacity: 0; }
+      `}</style>
       <svg viewBox="0 0 240 140" className="absolute inset-0 h-full w-full">
-        {/* Edges */}
-        <path d="M40 35 C 100 35, 100 35, 160 30" fill="none" stroke="currentColor" strokeOpacity="0.5" strokeWidth="1" />
-        <path d="M40 35 C 100 50, 100 65, 160 65" fill="none" stroke="currentColor" strokeOpacity="0.4" strokeWidth="1" />
-        <path d="M40 100 C 100 95, 100 100, 160 100" fill="none" stroke="currentColor" strokeOpacity="0.5" strokeWidth="1" />
-        <path d="M40 100 C 100 110, 100 130, 160 130" fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="3 3" />
+        <path className="step2-edge" style={{ animationDelay: "0.4s" }}
+              d="M40 35 C 100 35, 100 35, 160 30" fill="none" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1" />
+        <path className="step2-edge" style={{ animationDelay: "0.9s" }}
+              d="M40 35 C 100 50, 100 65, 160 65" fill="none" stroke="currentColor" strokeOpacity="0.45" strokeWidth="1" />
+        <path className="step2-edge" style={{ animationDelay: "1.4s" }}
+              d="M40 100 C 100 95, 100 100, 160 100" fill="none" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1" />
+        <path className="step2-edge" style={{ animationDelay: "1.9s" }}
+              d="M40 100 C 100 110, 100 130, 160 130" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 3" />
       </svg>
-      {/* Doc nodes */}
-      <div className="absolute left-3 top-[18px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px] font-mono">
+      <div className="step2-node absolute left-3 top-[18px] rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[8.5px]" style={{ animationDelay: "0s" }}>
         passport
       </div>
-      <div className="absolute left-3 top-[84px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px] font-mono">
+      <div className="step2-node absolute left-3 top-[84px] rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[8.5px]" style={{ animationDelay: "0.6s" }}>
         utility
       </div>
-      {/* Fact nodes */}
-      <div className="absolute right-3 top-[14px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]">
+      <div className="step2-node absolute right-3 top-[14px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]" style={{ animationDelay: "0.4s" }}>
         Full Name
       </div>
-      <div className="absolute right-3 top-[49px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]">
+      <div className="step2-node absolute right-3 top-[49px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]" style={{ animationDelay: "0.9s" }}>
         DOB
       </div>
-      <div className="absolute right-3 top-[84px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]">
+      <div className="step2-node absolute right-3 top-[84px] rounded border border-border bg-background px-1.5 py-0.5 text-[8.5px]" style={{ animationDelay: "1.4s" }}>
         Address
       </div>
-      <div className="absolute right-3 top-[114px] rounded border-2 border-foreground bg-background px-1.5 py-0.5 text-[8.5px]">
+      <div className="absolute right-3 top-[114px] rounded border-2 border-foreground bg-background px-1.5 py-0.5 text-[8.5px]"
+           style={{ animation: "step2-flag-pulse 6s ease-in-out infinite", animationDelay: "1.9s", opacity: 0 }}>
         DOB (red flag)
       </div>
     </div>
@@ -589,17 +642,49 @@ function StepGraphVisual() {
 }
 
 function StepFillVisual() {
+  // Each field's bar grows from 0 → its target width, staggered.
+  const fields = [
+    { label: "First name", target: 80, delay: "0.2s" },
+    { label: "Last name",  target: 80, delay: "1.0s" },
+    { label: "DOB",        target: 50, delay: "1.8s" },
+  ];
   return (
     <div className="relative h-[140px] overflow-hidden rounded-lg border border-border bg-card p-2.5">
+      <style>{`
+        @keyframes step3-fill-80 {
+          0%, 10%  { width: 0%; }
+          35%, 80% { width: 80%; }
+          95%, 100%{ width: 0%; }
+        }
+        @keyframes step3-fill-50 {
+          0%, 10%  { width: 0%; }
+          35%, 80% { width: 50%; }
+          95%, 100%{ width: 0%; }
+        }
+        @keyframes step3-badge-pulse {
+          0%, 100% { transform: scale(0.95); opacity: 0.85; }
+          50%      { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
       <div className="space-y-1.5">
-        {["First name", "Last name", "DOB"].map((l, i) => (
-          <div key={l} className="rounded border border-border bg-background px-2 py-1">
-            <div className="text-[8.5px] uppercase tracking-wider text-muted-foreground">{l}</div>
-            <div className={`mt-0.5 h-2 rounded ${i < 2 ? "bg-foreground/70" : "bg-foreground/30"}`} style={{ width: `${i < 2 ? 80 : 50}%` }} />
+        {fields.map((f) => (
+          <div key={f.label} className="rounded border border-border bg-background px-2 py-1">
+            <div className="text-[8.5px] uppercase tracking-wider text-muted-foreground">{f.label}</div>
+            <div
+              className="mt-0.5 h-2 rounded bg-foreground/70"
+              style={{
+                width: 0,
+                animation: `${f.target === 80 ? "step3-fill-80" : "step3-fill-50"} 6s ease-in-out infinite`,
+                animationDelay: f.delay,
+              }}
+            />
           </div>
         ))}
       </div>
-      <div className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-[9px] font-semibold text-background">
+      <div
+        className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-[9px] font-semibold text-background"
+        style={{ animation: "step3-badge-pulse 1.4s ease-in-out infinite" }}
+      >
         <Sparkles className="h-2.5 w-2.5" /> Filling
       </div>
     </div>
@@ -1971,7 +2056,7 @@ const FOOTER_LINKS = {
   Product: [
     ["How it works", "#how"],
     ["Features", "#features"],
-    ["Side panel", "#features"],
+    ["Side panel", "#chrome-extension"],
     ["Verify it yourself", "#verify"],
   ],
   Learn: [
