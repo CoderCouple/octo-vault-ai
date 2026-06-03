@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Lock,
   MessageSquare, Network, PanelRight, Pin, RotateCcw, ScanLine,
-  ShieldCheck, Sparkles, Terminal, Trash2, Twitter, Users, WifiOff,
+  ShieldCheck, Sparkles, Terminal, Trash2, Users, WifiOff,
 } from "lucide-react";
 import {
   Background, Controls, Handle, MarkerType, Position, ReactFlow,
@@ -2002,10 +2002,6 @@ function Footer() {
             <a href="https://github.com/CoderCouple/octo-vault-ai" aria-label="GitHub"
               className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:border-foreground/40">
               <Github className="h-4 w-4" />
-            </a>
-            <a href="#" aria-label="Twitter"
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:border-foreground/40">
-              <Twitter className="h-4 w-4" />
             </a>
           </div>
         </div>
