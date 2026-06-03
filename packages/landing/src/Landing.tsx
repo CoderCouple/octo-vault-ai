@@ -119,7 +119,7 @@ function Hero() {
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
-            href="https://github.com/CoderCouple/octo-vault-ai/releases/download/v0.1.0-beta/OctoVault-0.0.1-arm64.dmg"
+            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg"
             download
             data-attr="cta-hero-download-mac-arm64"
             className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
@@ -140,7 +140,7 @@ function Hero() {
         <p className="mt-3 text-[11.5px] text-muted-foreground">
           Apple Silicon · 115 MB ·{" "}
           <a
-            href="https://github.com/CoderCouple/octo-vault-ai/releases/download/v0.1.0-beta/OctoVault-0.0.1.dmg"
+            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg"
             download
             data-attr="cta-hero-download-mac-intel"
             className="underline underline-offset-2 hover:text-foreground"
