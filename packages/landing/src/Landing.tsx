@@ -197,20 +197,14 @@ const HERO_PHASES = [
 
 function HeroDemo() {
   const [phase, setPhase] = useState(0);
-  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (paused) return;
     const t = setTimeout(() => setPhase((p) => (p + 1) % HERO_PHASES.length), HERO_PHASE_DURATIONS[phase]);
     return () => clearTimeout(t);
-  }, [phase, paused]);
+  }, [phase]);
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
+    <div className="relative">
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04),0_28px_70px_-22px_rgba(0,0,0,0.22)]">
         {/* Title bar */}
         <div className="flex h-9 items-center gap-3 border-b border-border bg-muted px-4">
@@ -225,8 +219,8 @@ function HeroDemo() {
             </div>
           </div>
           <div className="inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-            <span className={`size-1.5 rounded-full ${paused ? "bg-muted-foreground/50" : "animate-pulse bg-foreground"}`} />
-            {paused ? "paused" : `0${phase + 1}/0${HERO_PHASES.length}`}
+            <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
+            {`0${phase + 1}/0${HERO_PHASES.length}`}
           </div>
         </div>
         {/* Body: form on the left, side panel on the right */}
@@ -235,7 +229,7 @@ function HeroDemo() {
           <SidePanelPane phase={phase} />
         </div>
       </div>
-      {/* Phase stepper — click to jump, hover the demo to pause auto-advance */}
+      {/* Phase stepper — click to jump; auto-advances forever. */}
       <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
         {HERO_PHASES.map((p, i) => {
           const isActive = i === phase;
@@ -267,7 +261,7 @@ function HeroDemo() {
         })}
       </div>
       <p className="mt-2 text-center text-[10.5px] text-muted-foreground">
-        Hover to pause · Click a step to jump
+        Click a step to jump · auto-advances every few seconds
       </p>
     </div>
   );
