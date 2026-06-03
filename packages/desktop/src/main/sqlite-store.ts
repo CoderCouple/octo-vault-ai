@@ -141,6 +141,22 @@ export function initialize(password: string): void {
   db.exec(SCHEMA);
 }
 
+/**
+ * Destroy the vault entirely. Closes any open DB, deletes the SQLCipher
+ * file plus its WAL/SHM sidecars. Caller (UnlockScreen "Reset vault")
+ * is responsible for the confirmation dialog — this method does NOT
+ * prompt or check; it just wipes. Re-launching the app afterwards
+ * sees `vaultExists() === false` and drops into Onboarding for a
+ * fresh password setup.
+ */
+export function reset(): void {
+  if (db) close();
+  const path = getDbPath();
+  for (const suffix of ["", "-journal", "-wal", "-shm"]) {
+    try { unlinkSync(path + suffix); } catch { /* missing files are fine */ }
+  }
+}
+
 /** Open an existing DB; returns false on wrong password. */
 export function unlock(password: string): boolean {
   if (!vaultExists()) return false;
@@ -338,5 +354,8 @@ export const store = {
   setAuthBlob(blob: Uint8Array) {
     requireDb().prepare("INSERT INTO auth(key, blob) VALUES ('blob', ?) ON CONFLICT(key) DO UPDATE SET blob = excluded.blob")
       .run(Buffer.from(blob));
+  },
+  deleteAuthBlob() {
+    requireDb().prepare("DELETE FROM auth WHERE key = 'blob'").run();
   },
 };

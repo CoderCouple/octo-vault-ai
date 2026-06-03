@@ -217,4 +217,7 @@ export const indexedDbAdapter: StorageAdapter = {
   // --- Auth blob (plain by definition — it's the unlock credential) ---
   async getAuthBlob() { return (await get<Uint8Array>("blob", authStore)) ?? null; },
   async setAuthBlob(blob) { await set("blob", blob, authStore); },
+  /** Used by the "Reset vault" flow — wipes the auth credential entirely
+      so getAuthBlob() returns null afterwards. */
+  async deleteAuthBlob() { await del("blob", authStore); },
 };

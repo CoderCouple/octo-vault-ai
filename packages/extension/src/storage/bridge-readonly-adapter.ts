@@ -88,6 +88,7 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
 
   async getAuthBlob() { return null; },
   async setAuthBlob(_blob) { throw new ReadOnlyError(); },
+  async deleteAuthBlob() { throw new ReadOnlyError(); },
 };
 
 // Type re-exports the file uses internally.

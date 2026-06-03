@@ -72,4 +72,5 @@ export const ipcStorageAdapter: StorageAdapter = {
     return safe(async () => (await s().getAuthBlob()) as Uint8Array | null, null);
   },
   async setAuthBlob(blob) { await s().setAuthBlob(blob); },
+  async deleteAuthBlob() { await s().deleteAuthBlob(); },
 };

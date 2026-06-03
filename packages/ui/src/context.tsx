@@ -32,6 +32,7 @@ export interface AppHost {
   vaultInit(password: string): Promise<void>;     // first-time setup
   vaultUnlock(password: string): Promise<boolean>;
   vaultLock(): Promise<void>;
+  vaultReset(): Promise<void>;                    // destroys the vault, no prompt
   isVaultUnlocked(): boolean;
   // If provided, the popup header shows a clickable source pill.
   sources?: VaultSource[];

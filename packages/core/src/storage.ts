@@ -101,6 +101,9 @@ export interface StorageAdapter {
   // Master-password salt + verifier (opaque blob)
   getAuthBlob(): Promise<Uint8Array | null>;
   setAuthBlob(blob: Uint8Array): Promise<void>;
+  // Wipes the unlock credential entirely. Used by the "Reset vault"
+  // flow in UnlockScreen — paired with deleting the vault data itself.
+  deleteAuthBlob(): Promise<void>;
 }
 
 // Bootstrap helper: ensures a "self" entity exists. Run once per app open.

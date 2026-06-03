@@ -30,6 +30,7 @@ declare global {
         initialize: (password: string) => Promise<boolean>;
         unlock: (password: string) => Promise<boolean>;
         lock: () => Promise<void>;
+        reset: () => Promise<void>;
       };
       store: Record<string, (...args: unknown[]) => Promise<unknown>>;
     };
@@ -215,6 +216,7 @@ Return JSON:
     return window.octovault!.vault.unlock(password);
   },
   async vaultLock(): Promise<void> { await window.octovault!.vault.lock(); },
+  async vaultReset(): Promise<void> { await window.octovault!.vault.reset(); },
   isVaultUnlocked(): boolean {
     // SQLCipher state lives in main; we can't synchronously query it.
     // Track it locally based on the most recent unlock/init call.
@@ -236,6 +238,8 @@ desktopHost.vaultUnlock = async (pw: string) => {
   return ok;
 };
 desktopHost.vaultLock = async () => { await origLock(); _unlockedFlag = false; };
+const origReset = desktopHost.vaultReset;
+desktopHost.vaultReset = async () => { await origReset(); _unlockedFlag = false; };
 
 // Push the current vault state to the main process at boot and on a 4s
 // poll. The HTTP server in main always returns the latest snapshot for

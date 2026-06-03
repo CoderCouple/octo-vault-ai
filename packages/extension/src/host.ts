@@ -76,6 +76,10 @@ export const extensionHost: AppHost = {
     return vaultCrypto.unlock(password, blob);
   },
   async vaultLock(): Promise<void> { vaultCrypto.lock(); },
+  async vaultReset(): Promise<void> {
+    vaultCrypto.lock();
+    await indexedDbAdapter.deleteAuthBlob();
+  },
   isVaultUnlocked(): boolean { return vaultCrypto.isUnlocked(); },
 
   async ask(question, opts): Promise<QaResult> {

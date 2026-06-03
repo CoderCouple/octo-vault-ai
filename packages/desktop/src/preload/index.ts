@@ -30,6 +30,7 @@ const vault = {
   initialize: (password: string) => ipcRenderer.invoke("vault.initialize", password) as Promise<boolean>,
   unlock:     (password: string) => ipcRenderer.invoke("vault.unlock", password)     as Promise<boolean>,
   lock:       () => ipcRenderer.invoke("vault.lock")                as Promise<void>,
+  reset:      () => ipcRenderer.invoke("vault.reset")               as Promise<void>,
 };
 
 const doc = {
@@ -74,6 +75,7 @@ const store = {
   updateSettings:          (patch: unknown)         => ipcRenderer.invoke("store.updateSettings", patch),
   getAuthBlob:             ()                       => ipcRenderer.invoke("store.getAuthBlob") as Promise<Uint8Array | null>,
   setAuthBlob:             (blob: Uint8Array)       => ipcRenderer.invoke("store.setAuthBlob", blob),
+  deleteAuthBlob:          ()                       => ipcRenderer.invoke("store.deleteAuthBlob"),
 };
 
 contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc });

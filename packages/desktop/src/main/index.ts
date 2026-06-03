@@ -191,6 +191,7 @@ ipcMain.handle("vault.initialize", (_e, password: string) => {
 });
 ipcMain.handle("vault.unlock", (_e, password: string) => vault.unlock(password));
 ipcMain.handle("vault.lock", () => { vault.close(); });
+ipcMain.handle("vault.reset", () => { vault.reset(); });
 
 // --- Storage RPC: one IPC method per StorageAdapter method ---
 // All wrapped: when the DB isn't open yet (pre-unlock), reads return
@@ -233,6 +234,7 @@ ipcMain.handle("store.getSettings",             () => whenOpen(() => vault.store
 ipcMain.handle("store.updateSettings",          (_e, patch) => whenOpen(() => vault.store.updateSettings(patch), patch ?? {}));
 ipcMain.handle("store.getAuthBlob",             () => whenOpen(() => vault.store.getAuthBlob(), null));
 ipcMain.handle("store.setAuthBlob",             (_e, blob) => whenOpen(() => vault.store.setAuthBlob(blob), null));
+ipcMain.handle("store.deleteAuthBlob",          () => whenOpen(() => vault.store.deleteAuthBlob(), null));
 
 // Read a document's referenced file from disk by ID. Security: only
 // the file path stored on the document record is read — the renderer

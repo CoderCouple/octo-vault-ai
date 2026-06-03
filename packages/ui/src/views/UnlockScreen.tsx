@@ -4,13 +4,17 @@
 // for extension, SQLCipher via IPC for desktop).
 
 import { useState } from "react";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, RotateCcw } from "lucide-react";
 import { useAppContext } from "../context";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { OctoMark } from "../components/octo-mark";
 import { BRAND, tx } from "../lib/brand";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
 
 export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
   const { host } = useAppContext();
@@ -25,6 +29,21 @@ export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
       const ok = await host.vaultUnlock(password);
       if (!ok) { setError("Wrong password. Try again."); return; }
       onUnlocked();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Wipes the vault and lets VaultGate fall through to Onboarding. The
+  // AlertDialog gives a final confirmation — there's no undo for this.
+  async function reset() {
+    setError(null);
+    setBusy(true);
+    try {
+      await host.vaultReset();
+      onUnlocked(); // unblocks VaultGate; vaultExists() is now false → Onboarding triggers
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -70,6 +89,40 @@ export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <p className={`text-center ${tx.muted}`}>
           Your vault is encrypted with this password. We can't recover it for you.
         </p>
+
+        {/* Last resort — forgot password. AlertDialog forces an explicit
+            confirm because there's no undo: every document, entity, and
+            extracted fact is wiped. */}
+        <div className="flex justify-center">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                disabled={busy}
+              >
+                <RotateCcw className="h-3 w-3" /> Forgot password? Reset and start fresh
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset your vault?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes every document, entity, and extracted fact
+                  stored on this device. The encryption key is gone — even we can't
+                  recover this data afterwards. You'll be asked to pick a new master
+                  password.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep my vault</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void reset()}>
+                  Yes, wipe and start over
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
     </div>
   );
