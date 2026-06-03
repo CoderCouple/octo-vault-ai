@@ -119,10 +119,9 @@ function Hero() {
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
-            href="https://github.com/CoderCouple/octo-vault-ai/releases/latest"
-            target="_blank"
-            rel="noreferrer"
-            data-attr="cta-hero-download-mac"
+            href="https://github.com/CoderCouple/octo-vault-ai/releases/download/v0.1.0-beta/OctoVault-0.0.1-arm64.dmg"
+            download
+            data-attr="cta-hero-download-mac-arm64"
             className="inline-flex h-11 items-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
           >
             <Download className="h-4 w-4" /> Download for Mac
@@ -136,7 +135,19 @@ function Hero() {
             Join the waitlist <ArrowRight className="h-4 w-4" />
           </a>
         </div>
-        {/* Platform availability — Mac is live, Windows/Linux are coming-soon. */}
+        {/* Mac arch note + platform availability. The big button serves the
+            arm64 DMG; Intel users grab the x64 build from the small link. */}
+        <p className="mt-3 text-[11.5px] text-muted-foreground">
+          Apple Silicon · 115 MB ·{" "}
+          <a
+            href="https://github.com/CoderCouple/octo-vault-ai/releases/download/v0.1.0-beta/OctoVault-0.0.1.dmg"
+            download
+            data-attr="cta-hero-download-mac-intel"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Intel Mac DMG
+          </a>
+        </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
             <span className="size-1.5 rounded-full bg-muted-foreground/40" /> Windows · coming soon
