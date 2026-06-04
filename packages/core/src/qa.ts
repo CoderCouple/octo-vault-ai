@@ -221,9 +221,47 @@ export async function buildEmbeddingsForDocument(
 }
 
 // --- Query ---
-const SYSTEM = `You are an on-device assistant answering personal questions about the user
-and their family using only the snippets provided. Cite sources inline like [1], [2]. If the
-snippets don't contain the answer, say so plainly — never invent. Keep answers short.`;
+// Why the prompt is shaped this way:
+// 1. Snippets are presented as natural sentences ("Sunil's passport
+//    expires on 14/01/2035 …") rather than "Field: Value" pairs.
+//    qwen3:8b reliably extracts facts from prose but treats structured
+//    "Field: Value" lines as database metadata it shouldn't cite from
+//    — which led to the June-2026 bug where the answer was right there
+//    and the model said "not in the snippets."
+// 2. The system prompt accepts BOTH the snippet block (chunks of doc
+//    text) AND structured facts as citable. Citation numbers come from
+//    the same numbered list regardless of source kind.
+// 3. We loosen "use only the snippets" to "use the facts and excerpts
+//    below" — same intent (no hallucination), better posture (the
+//    model knows facts ARE allowed answers).
+const SYSTEM = `You are an on-device assistant answering personal questions about
+the user and their family. Use the facts and document excerpts provided below.
+Each is numbered — cite the ones you used inline like [1] or [1,3]. If the
+provided information doesn't answer the question, say so plainly and don't
+invent details. Keep answers short and direct.`;
+
+// Render a retrieved fact-embedding as a natural sentence the LLM
+// will cite from cleanly. Falls back to the raw text for chunk-kind
+// records (which are already prose).
+function factToSentence(
+  r: EmbeddingRecord,
+  entityName: string,
+  docName: string,
+): string {
+  if (r.kind === "chunk") {
+    return `${r.text} (from ${docName}${r.page ? ` p.${r.page}` : ""})`;
+  }
+  // Fact: pull the structured "Label: Value" apart and reassemble as
+  // possessive prose. "Date of Birth: 1987-08-28" → "Sunil's Date of
+  // Birth is 1987-08-28."
+  const colonIdx = r.text.indexOf(":");
+  if (colonIdx < 0) {
+    return `${entityName}: ${r.text} (from ${docName})`;
+  }
+  const label = r.text.slice(0, colonIdx).trim();
+  const value = r.text.slice(colonIdx + 1).trim();
+  return `${entityName}'s ${label} is ${value} (from ${docName}${r.page ? ` p.${r.page}` : ""}).`;
+}
 
 interface ProfileLookup {
   entities: Entity[];
@@ -298,12 +336,15 @@ export async function ask(
     };
   });
 
-  // Compose context block.
+  // Compose context block. Each retrieved record renders as a single
+  // numbered natural-language sentence — see factToSentence(). This is
+  // the key fix for the June-2026 bug where structured "Label: Value"
+  // snippets were retrieved but the LLM refused to cite them.
   const ctxLines = retrieved.map((r, i) => {
-    const entity = lookup.entities.find((e) => e.id === r.entityId)?.name ?? "Unknown";
-    const doc = lookup.documents.find((d) => d.id === r.documentId)?.name ?? "user-entered";
-    return `[${i + 1}] (${entity} · ${doc}${r.page ? ` p.${r.page}` : ""}) ${r.text}`;
-  }).join("\n\n");
+    const entityName = lookup.entities.find((e) => e.id === r.entityId)?.name ?? "The user";
+    const docName = lookup.documents.find((d) => d.id === r.documentId)?.name ?? "user-entered";
+    return `[${i + 1}] ${factToSentence(r, entityName, docName)}`;
+  }).join("\n");
 
   // Add canonical-profile summary for direct fact lookups.
   const summary = summarizeProfiles(lookup);
@@ -313,10 +354,10 @@ export async function ask(
 Profile summary:
 ${summary}
 
-Snippets:
+Facts and excerpts (numbered for citation):
 ${ctxLines}
 
-Answer the question using only the information above. Cite the snippet number(s) you used like [1] or [1,3].`;
+Answer using the facts and excerpts above. Cite the numbers you used like [1] or [1,3].`;
 
   const raw = await engine.generate(prompt, SYSTEM);
 
