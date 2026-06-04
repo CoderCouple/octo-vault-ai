@@ -42,6 +42,13 @@ declare global {
         set: (accelerator: string) => void;
         move: (x: number, y: number) => void;
         snap: () => void;
+        setEdge: (edge: "left" | "right") => void;
+        hide: () => void;
+        show: () => void;
+        contextMenu: () => void;
+      };
+      launch?: {
+        setOpenAtLogin: (on: boolean) => void;
       };
     };
   }

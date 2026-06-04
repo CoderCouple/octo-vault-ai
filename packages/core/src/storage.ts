@@ -43,6 +43,20 @@ export interface Settings {
   // Spotlight overlay. Default: ⌘⌥O on macOS / Ctrl+Alt+O elsewhere.
   // Format reference: https://www.electronjs.org/docs/latest/api/accelerator
   globalShortcut: string;
+  // Which screen edge the floating shortcut prefers. Drag-snap still
+  // picks the nearer edge after a manual move; this is the explicit
+  // preference toggled from Settings.
+  shortcutEdge: "left" | "right";
+  // Whether to show the floating shortcut at all. Users who only want
+  // the keyboard hotkey can hide it here. Defaults true. Can also be
+  // toggled OFF via the right-click "Hide for now" context menu on
+  // the shortcut itself.
+  showFloatingShortcut: boolean;
+  // Whether to launch OctoVault automatically when the user logs in.
+  // Defaults true so the floating shortcut + global hotkey are always
+  // available. Maps to macOS's "Login Items" via Electron's
+  // app.setLoginItemSettings.
+  launchAtLogin: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +68,9 @@ export const DEFAULT_SETTINGS: Settings = {
   requireUnlockForSensitive: true,
   hasMasterPassword: false,
   globalShortcut: "CommandOrControl+Alt+O",
+  shortcutEdge: "left",
+  showFloatingShortcut: true,
+  launchAtLogin: true,
 };
 
 export interface StorageAdapter {

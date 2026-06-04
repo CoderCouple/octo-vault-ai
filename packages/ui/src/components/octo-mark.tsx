@@ -1,6 +1,8 @@
-// OctoVault brand mark. An octagon (8 sides = "Octo") with a
-// keyhole inside (vault). Monochrome — uses currentColor so it
-// adapts to light/dark themes.
+// OctoVault brand mark. An octagon (8 sides = "Octo") with a keyhole
+// inside (vault). Filled-badge style — always a black rounded square
+// with a white OctoMark inside, matching the favicon and the macOS app
+// icon. The hardcoded colors (no currentColor / no theme tokens)
+// guarantee identical look on every desktop / wallpaper / theme.
 
 import { cn } from "../lib/utils";
 
@@ -17,20 +19,24 @@ export function OctoMark({ className, ...props }: OctoMarkProps) {
       className={cn("h-5 w-5", className)}
       {...props}
     >
-      {/* Octagon outline — 8 sides for "Octo". */}
-      <polygon
-        points="7,1.5 17,1.5 22.5,7 22.5,17 17,22.5 7,22.5 1.5,17 1.5,7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      {/* Keyhole — vault symbolism. Filled. */}
-      <circle cx="12" cy="11" r="1.75" fill="currentColor" />
-      <path
-        d="M11 12.5 L11 16.25 L13 16.25 L13 12.5 Z"
-        fill="currentColor"
-      />
+      {/* Black rounded-square badge background. */}
+      <rect width="24" height="24" rx="4.5" fill="#0a0a0a" />
+      {/* OctoMark in white, scaled to ~75% of the canvas so there's
+          visible padding around the octagon. */}
+      <g transform="translate(3 3) scale(0.75)">
+        <polygon
+          points="7,1.5 17,1.5 22.5,7 22.5,17 17,22.5 7,22.5 1.5,17 1.5,7"
+          fill="none"
+          stroke="#fafafa"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <circle cx="12" cy="11" r="1.85" fill="#fafafa" />
+        <path
+          d="M11 12.5 L11 16.25 L13 16.25 L13 12.5 Z"
+          fill="#fafafa"
+        />
+      </g>
     </svg>
   );
 }

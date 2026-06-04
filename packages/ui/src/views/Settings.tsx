@@ -116,6 +116,45 @@ export function SettingsView() {
             Electron Accelerator format. Examples: <span className="font-mono">CommandOrControl+Alt+O</span> · <span className="font-mono">CommandOrControl+Shift+Space</span> · <span className="font-mono">Alt+Space</span>. On macOS, <span className="font-mono">CommandOrControl</span> is ⌘ and <span className="font-mono">Alt</span> is ⌥.
           </p>
         </Field>
+
+        <Toggle
+          label="Show floating shortcut"
+          desc="The dark capsule on the edge of your screen that opens the search overlay. Right-click it for 'Hide for now'."
+          checked={settings.showFloatingShortcut}
+          onChange={async (v) => {
+            await setSettings({ showFloatingShortcut: v });
+            const w = window as unknown as { octovault?: { shortcut?: { hide: () => void; show: () => void } } };
+            if (v) w.octovault?.shortcut?.show();
+            else   w.octovault?.shortcut?.hide();
+          }}
+        />
+
+        <Field label="Floating shortcut edge">
+          <select
+            value={settings.shortcutEdge}
+            onChange={async (e) => {
+              const edge = e.target.value as "left" | "right";
+              await setSettings({ shortcutEdge: edge });
+              (window as unknown as { octovault?: { shortcut?: { setEdge: (e: "left" | "right") => void } } })
+                .octovault?.shortcut?.setEdge(edge);
+            }}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="left">Left edge (vertically centered)</option>
+            <option value="right">Right edge (vertically centered)</option>
+          </select>
+        </Field>
+
+        <Toggle
+          label="Launch at login"
+          desc="Start OctoVault automatically when you log in to your Mac so the floating shortcut and global hotkey are always ready."
+          checked={settings.launchAtLogin}
+          onChange={async (v) => {
+            await setSettings({ launchAtLogin: v });
+            (window as unknown as { octovault?: { launch?: { setOpenAtLogin: (on: boolean) => void } } })
+              .octovault?.launch?.setOpenAtLogin(v);
+          }}
+        />
       </Section>
 
       <Separator />

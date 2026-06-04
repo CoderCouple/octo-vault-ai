@@ -2,7 +2,7 @@
 // over IPC so the renderer doesn't have to fight CORS, and applies
 // strict default security settings.
 
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen, shell } from "electron";
 import http from "node:http";
 import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -261,7 +261,62 @@ ipcMain.on("shortcut.set", (_e, accelerator: string) => {
 ipcMain.on("shortcut.move", (_e, x: number, y: number) => {
   shortcutWindow?.setPosition(Math.round(x), Math.round(y));
 });
-ipcMain.on("shortcut.snap", () => snapShortcutToEdge());
+ipcMain.on("shortcut.snap",     () => snapShortcutToEdge());
+ipcMain.on("shortcut.setEdge",  (_e, edge: "left" | "right") => setShortcutEdge(edge));
+ipcMain.on("shortcut.hide",     () => shortcutWindow?.hide());
+ipcMain.on("shortcut.show",     () => { if (!shortcutWindow) createShortcutWindow(); shortcutWindow?.show(); });
+
+// --- Launch at login ---
+// Wraps app.setLoginItemSettings so the renderer can toggle it from
+// Settings without juggling Electron APIs. macOS / Windows only —
+// Linux uses XDG autostart files separately (TODO if we ship Linux).
+function applyLoginItem(openAtLogin: boolean) {
+  app.setLoginItemSettings({ openAtLogin, openAsHidden: false });
+}
+ipcMain.on("launch.setOpenAtLogin", (_e, on: boolean) => applyLoginItem(on));
+
+function currentLaunchAtLoginFromSettings(): boolean {
+  if (!vault.isOpen()) return true; // default ON until vault loads
+  try {
+    const s = vault.store.getSettings() as { launchAtLogin?: boolean };
+    return s.launchAtLogin !== false;
+  } catch { return true; }
+}
+
+function currentShowFloatingShortcutFromSettings(): boolean {
+  if (!vault.isOpen()) return true; // default ON until vault loads
+  try {
+    const s = vault.store.getSettings() as { showFloatingShortcut?: boolean };
+    return s.showFloatingShortcut !== false;
+  } catch { return true; }
+}
+
+// Native context menu on the floating shortcut. Right-click on the
+// shortcut button → renderer fires this → we pop a small native menu.
+ipcMain.on("shortcut.contextMenu", () => {
+  if (!shortcutWindow) return;
+  const menu = Menu.buildFromTemplate([
+    { label: "Open OctoVault", click: () => {
+      const all = BrowserWindow.getAllWindows();
+      const main = all.find((w) => w !== shortcutWindow && w !== overlayWindow);
+      if (main) { main.show(); main.focus(); }
+    }},
+    { label: "Open quick search…", accelerator: "CommandOrControl+Alt+O",
+      click: () => toggleOverlay() },
+    { type: "separator" },
+    { label: "Snap to left edge",  click: () => setShortcutEdge("left")  },
+    { label: "Snap to right edge", click: () => setShortcutEdge("right") },
+    { type: "separator" },
+    // The "Hide for now" path hides the window for this session only.
+    // To hide PERSISTENTLY across launches, users flip the toggle in
+    // Settings → "Show floating shortcut" — that updates the vault
+    // setting and pushes shortcut.hide via the renderer.
+    { label: "Hide for now",       click: () => shortcutWindow?.hide() },
+    { type: "separator" },
+    { label: "Quit OctoVault",     role: "quit" },
+  ]);
+  menu.popup({ window: shortcutWindow });
+});
 
 // --- Floating shortcut window ---
 // Tiny always-on-top capsule with the OctoMark. Drag to reposition;
@@ -285,12 +340,32 @@ function saveShortcutPos(x: number, y: number) {
 }
 
 function defaultShortcutPos(): { x: number; y: number } {
-  // Right edge, vertically centred on the primary display's work area.
-  const { x: dx, y: dy, width: dw, height: dh } = screen.getPrimaryDisplay().workArea;
+  // Left edge, vertically centred on the primary display's work area.
+  // User can change the preferred edge in Settings → Floating shortcut
+  // edge; that pushes a `shortcut.setEdge` IPC which moves the window.
+  const { x: dx, y: dy, height: dh } = screen.getPrimaryDisplay().workArea;
   return {
-    x: dx + dw - SHORTCUT_W - SHORTCUT_EDGE_MARGIN,
+    x: dx + SHORTCUT_EDGE_MARGIN,
     y: dy + Math.floor((dh - SHORTCUT_H) / 2),
   };
+}
+
+// Snap to a specific edge (left or right), preserving the current
+// vertical position. Used when the user changes the edge preference
+// from Settings — different from snapShortcutToEdge() which picks the
+// nearer edge based on where the user dragged to.
+function setShortcutEdge(edge: "left" | "right") {
+  if (!shortcutWindow) return;
+  const [wx, wy] = shortcutWindow.getPosition();
+  const display = screen.getDisplayNearestPoint({ x: wx, y: wy });
+  const { x: dx, y: dy, width: dw, height: dh } = display.workArea;
+  const targetX = edge === "right"
+    ? dx + dw - SHORTCUT_W - SHORTCUT_EDGE_MARGIN
+    : dx + SHORTCUT_EDGE_MARGIN;
+  const targetY = Math.max(dy + SHORTCUT_EDGE_MARGIN,
+                   Math.min(wy, dy + dh - SHORTCUT_H - SHORTCUT_EDGE_MARGIN));
+  shortcutWindow.setPosition(Math.round(targetX), Math.round(targetY), true);
+  saveShortcutPos(targetX, targetY);
 }
 
 function snapShortcutToEdge() {
@@ -311,6 +386,7 @@ function snapShortcutToEdge() {
 
 function createShortcutWindow() {
   if (shortcutWindow) return;
+  if (!currentShowFloatingShortcutFromSettings()) return; // user opted out
   const pos = loadShortcutPos() ?? defaultShortcutPos();
   shortcutWindow = new BrowserWindow({
     width: SHORTCUT_W,
@@ -392,7 +468,14 @@ ipcMain.handle("vault.initialize", (_e, password: string) => {
 });
 ipcMain.handle("vault.unlock", (_e, password: string) => {
   const ok = vault.unlock(password);
-  if (ok) reregisterShortcut(currentShortcutFromSettings());
+  if (ok) {
+    reregisterShortcut(currentShortcutFromSettings());
+    applyLoginItem(currentLaunchAtLoginFromSettings());
+    // If the user previously toggled the shortcut off, ensure it's
+    // hidden even though we created the window at boot.
+    if (!currentShowFloatingShortcutFromSettings()) shortcutWindow?.hide();
+    else if (!shortcutWindow) createShortcutWindow();
+  }
   return ok;
 });
 ipcMain.handle("vault.lock", () => { vault.close(); });
@@ -469,6 +552,9 @@ ipcMain.handle("ollama.embed", async (_e, cfg: OllamaCfg, model: string, prompt:
 });
 
 void app.whenReady().then(() => {
+  // Default to launching at login. The user can flip this off in
+  // Settings — that pushes launch.setOpenAtLogin via IPC.
+  applyLoginItem(true);
   createWindow();
   createShortcutWindow();
   app.on("activate", () => {

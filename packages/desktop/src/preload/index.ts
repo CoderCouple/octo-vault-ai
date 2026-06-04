@@ -90,12 +90,20 @@ const overlay = {
 // user changes the accelerator string; main process unregisters the
 // previous binding and registers the new one.
 const shortcut = {
-  set: (accelerator: string) => ipcRenderer.send("shortcut.set", accelerator),
-  move: (x: number, y: number) => ipcRenderer.send("shortcut.move", x, y),
-  snap: () => ipcRenderer.send("shortcut.snap"),
+  set:         (accelerator: string)        => ipcRenderer.send("shortcut.set", accelerator),
+  move:        (x: number, y: number)       => ipcRenderer.send("shortcut.move", x, y),
+  snap:        ()                            => ipcRenderer.send("shortcut.snap"),
+  setEdge:     (edge: "left" | "right")      => ipcRenderer.send("shortcut.setEdge", edge),
+  hide:        ()                            => ipcRenderer.send("shortcut.hide"),
+  show:        ()                            => ipcRenderer.send("shortcut.show"),
+  contextMenu: ()                            => ipcRenderer.send("shortcut.contextMenu"),
 };
 
-contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc, overlay, shortcut });
+const launch = {
+  setOpenAtLogin: (on: boolean) => ipcRenderer.send("launch.setOpenAtLogin", on),
+};
+
+contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc, overlay, shortcut, launch });
 
 export type OctovaultBridge = {
   ollama: typeof ollama;
@@ -105,4 +113,5 @@ export type OctovaultBridge = {
   doc: typeof doc;
   overlay: typeof overlay;
   shortcut: typeof shortcut;
+  launch: typeof launch;
 };
