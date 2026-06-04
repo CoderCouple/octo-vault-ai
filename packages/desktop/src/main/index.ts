@@ -253,6 +253,16 @@ ipcMain.on("shortcut.set", (_e, accelerator: string) => {
   reregisterShortcut(accelerator);
 });
 
+// Renderer-driven drag for the floating shortcut. The CSS
+// `-webkit-app-region: drag` approach can't coexist with onClick on
+// the same element, and the click target covers the whole window —
+// so we do drag in JS: renderer tracks mousedown→mousemove deltas
+// and sends absolute screen coords; main calls setPosition.
+ipcMain.on("shortcut.move", (_e, x: number, y: number) => {
+  shortcutWindow?.setPosition(Math.round(x), Math.round(y));
+});
+ipcMain.on("shortcut.snap", () => snapShortcutToEdge());
+
 // --- Floating shortcut window ---
 // Tiny always-on-top capsule with the OctoMark. Drag to reposition;
 // on drop the window snaps to the nearer left/right screen edge and

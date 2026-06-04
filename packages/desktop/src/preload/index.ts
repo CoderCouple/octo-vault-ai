@@ -91,6 +91,8 @@ const overlay = {
 // previous binding and registers the new one.
 const shortcut = {
   set: (accelerator: string) => ipcRenderer.send("shortcut.set", accelerator),
+  move: (x: number, y: number) => ipcRenderer.send("shortcut.move", x, y),
+  snap: () => ipcRenderer.send("shortcut.snap"),
 };
 
 contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc, overlay, shortcut });

@@ -40,6 +40,8 @@ declare global {
       };
       shortcut?: {
         set: (accelerator: string) => void;
+        move: (x: number, y: number) => void;
+        snap: () => void;
       };
     };
   }
