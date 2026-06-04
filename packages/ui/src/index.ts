@@ -6,6 +6,7 @@ export { Conflicts } from "./views/Conflicts";
 export { FactsGraph } from "./views/FactsGraph";
 export { SettingsView } from "./views/Settings";
 export { Onboarding } from "./views/Onboarding";
+export { SpotlightOverlay } from "./views/SpotlightOverlay";
 export { SensitivityGate, MaskedValue } from "./components/SensitivityGate";
 export { ThemeProvider, useTheme, type Theme } from "./components/theme";
 export { BRAND, tx, status } from "./lib/brand";

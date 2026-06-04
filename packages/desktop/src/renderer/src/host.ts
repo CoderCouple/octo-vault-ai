@@ -33,6 +33,14 @@ declare global {
         reset: () => Promise<void>;
       };
       store: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      overlay?: {
+        hide: () => void;
+        show: () => void;
+        toggle: () => void;
+      };
+      shortcut?: {
+        set: (accelerator: string) => void;
+      };
     };
   }
 }

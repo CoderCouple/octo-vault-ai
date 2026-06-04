@@ -36,15 +36,21 @@ mac:
       arch:
         - arm64
         - x64
-  # Ad-hoc signed dev build (identity "-" produces a signature locally).
-  # Combined with `xattr -dr com.apple.quarantine` on the .app after install,
-  # this resolves the "OctoVault is damaged" Gatekeeper message. For a
-  # public release that doesn't need the xattr step, replace with a real
-  # Apple Developer ID and notarize.
-  identity: "-"
-  hardenedRuntime: false
+  # Signed + notarized release build. Identity is just the cert CN
+  # (electron-builder prepends "Developer ID Application: " itself).
+  # Notarization requires these env vars at build time:
+  #   APPLE_TEAM_ID=6RF9THVXBJ
+  #   APPLE_KEYCHAIN_PROFILE=octovault-notarize
+  # The keychain profile was set up via `xcrun notarytool store-credentials`
+  # and stores the app-specific password securely; nothing sensitive
+  # belongs in this YAML.
+  identity: "Sunil Deviprasad Tiwari (6RF9THVXBJ)"
+  hardenedRuntime: true
   gatekeeperAssess: false
   icon: build/icon.png
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
 
 dmg:
   title: ${productName}

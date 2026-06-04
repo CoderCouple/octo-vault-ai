@@ -2,7 +2,7 @@
 // over IPC so the renderer doesn't have to fight CORS, and applies
 // strict default security settings.
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
@@ -155,6 +155,107 @@ function createWindow() {
   }
 }
 
+// --- Spotlight overlay window ---
+// Frameless, transparent, always-on-top. Single search bar that calls
+// host.ask() via IPC. Toggled by Cmd+Option+O (global shortcut) and,
+// later, by clicking the floating shortcut. Lazy-created on first show
+// so app startup stays light.
+let overlayWindow: BrowserWindow | null = null;
+
+function showOverlay() {
+  if (!overlayWindow) {
+    overlayWindow = new BrowserWindow({
+      width: 640,
+      height: 460,
+      show: false,
+      frame: false,
+      transparent: true,
+      vibrancy: "fullscreen-ui",
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      hasShadow: true,
+      // Slot it just above other windows on macOS without taking focus
+      // from the front Space.
+      type: process.platform === "darwin" ? "panel" : undefined,
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.mjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    // Centered horizontally, ~22% from the top of the screen — same
+    // resting position as Spotlight.
+    const display = screen.getPrimaryDisplay();
+    const { width: sw, height: sh, x: dx, y: dy } = display.workArea;
+    overlayWindow.setPosition(
+      dx + Math.floor((sw - 640) / 2),
+      dy + Math.floor(sh * 0.22),
+    );
+
+    const searchSuffix = "?mode=overlay";
+    if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
+      void overlayWindow.loadURL(process.env["ELECTRON_RENDERER_URL"] + searchSuffix);
+    } else {
+      void overlayWindow.loadFile(join(__dirname, "../renderer/index.html"), { search: searchSuffix });
+    }
+
+    // Click-outside / focus-elsewhere dismiss.
+    overlayWindow.on("blur", () => overlayWindow?.hide());
+    overlayWindow.on("closed", () => { overlayWindow = null; });
+  }
+  overlayWindow.show();
+  overlayWindow.focus();
+}
+
+function hideOverlay() { overlayWindow?.hide(); }
+function toggleOverlay() {
+  if (overlayWindow?.isVisible()) hideOverlay();
+  else showOverlay();
+}
+
+ipcMain.on("overlay.show",   () => showOverlay());
+ipcMain.on("overlay.hide",   () => hideOverlay());
+ipcMain.on("overlay.toggle", () => toggleOverlay());
+
+// --- Global shortcut (configurable via Settings.globalShortcut) ---
+// Stored in the encrypted settings table, so before the vault is
+// unlocked we use the hardcoded default. After unlock/init we re-read
+// and re-register. Settings UI also pushes updates via "shortcut.set"
+// to swap the binding live.
+const DEFAULT_SHORTCUT = "CommandOrControl+Alt+O";
+let registeredShortcut: string | null = null;
+
+function currentShortcutFromSettings(): string {
+  if (!vault.isOpen()) return DEFAULT_SHORTCUT;
+  try {
+    const s = vault.store.getSettings() as { globalShortcut?: string };
+    return s.globalShortcut?.trim() || DEFAULT_SHORTCUT;
+  } catch { return DEFAULT_SHORTCUT; }
+}
+
+function reregisterShortcut(accelerator: string) {
+  if (registeredShortcut) {
+    globalShortcut.unregister(registeredShortcut);
+    registeredShortcut = null;
+  }
+  if (!accelerator) return;
+  try {
+    if (globalShortcut.register(accelerator, toggleOverlay)) {
+      registeredShortcut = accelerator;
+    } else {
+      console.warn(`[main] failed to register global shortcut "${accelerator}" — likely in use by another app`);
+    }
+  } catch (e) {
+    console.warn(`[main] invalid global shortcut "${accelerator}":`, e);
+  }
+}
+
+ipcMain.on("shortcut.set", (_e, accelerator: string) => {
+  reregisterShortcut(accelerator);
+});
+
 // IPC: Ollama proxy. Renderer asks; main fetches; no CORS.
 ipcMain.handle("ollama.health", async (_e, cfg: OllamaCfg) => {
   try {
@@ -187,9 +288,14 @@ ipcMain.handle("vault.exists", () => vault.vaultExists());
 ipcMain.handle("vault.isOpen", () => vault.isOpen());
 ipcMain.handle("vault.initialize", (_e, password: string) => {
   vault.initialize(password);
+  reregisterShortcut(currentShortcutFromSettings());
   return true;
 });
-ipcMain.handle("vault.unlock", (_e, password: string) => vault.unlock(password));
+ipcMain.handle("vault.unlock", (_e, password: string) => {
+  const ok = vault.unlock(password);
+  if (ok) reregisterShortcut(currentShortcutFromSettings());
+  return ok;
+});
 ipcMain.handle("vault.lock", () => { vault.close(); });
 ipcMain.handle("vault.reset", () => { vault.reset(); });
 
@@ -268,6 +374,16 @@ void app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Global hotkey at boot — uses the persisted setting if a vault
+  // happens to already be open (rare; usually vault is locked at this
+  // point), else falls back to the DEFAULT_SHORTCUT. After unlock/init
+  // we re-read settings and re-register.
+  reregisterShortcut(currentShortcutFromSettings());
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

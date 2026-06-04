@@ -39,6 +39,10 @@ export interface Settings {
   appLockMinutes: number;
   requireUnlockForSensitive: boolean;
   hasMasterPassword: boolean;
+  // Electron Accelerator string for the global hotkey that opens the
+  // Spotlight overlay. Default: ⌘⌥O on macOS / Ctrl+Alt+O elsewhere.
+  // Format reference: https://www.electronjs.org/docs/latest/api/accelerator
+  globalShortcut: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appLockMinutes: 5,
   requireUnlockForSensitive: true,
   hasMasterPassword: false,
+  globalShortcut: "CommandOrControl+Alt+O",
 };
 
 export interface StorageAdapter {

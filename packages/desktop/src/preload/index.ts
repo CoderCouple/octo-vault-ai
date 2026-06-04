@@ -78,7 +78,22 @@ const store = {
   deleteAuthBlob:          ()                       => ipcRenderer.invoke("store.deleteAuthBlob"),
 };
 
-contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc });
+// Spotlight overlay window controls (no-op in main window, routed
+// through the main process which targets the dedicated overlay window).
+const overlay = {
+  hide: () => ipcRenderer.send("overlay.hide"),
+  show: () => ipcRenderer.send("overlay.show"),
+  toggle: () => ipcRenderer.send("overlay.toggle"),
+};
+
+// User-configurable global shortcut. Settings UI calls .set() after the
+// user changes the accelerator string; main process unregisters the
+// previous binding and registers the new one.
+const shortcut = {
+  set: (accelerator: string) => ipcRenderer.send("shortcut.set", accelerator),
+};
+
+contextBridge.exposeInMainWorld("octovault", { ollama, bridge, vault, store, doc, overlay, shortcut });
 
 export type OctovaultBridge = {
   ollama: typeof ollama;
@@ -86,4 +101,6 @@ export type OctovaultBridge = {
   vault: typeof vault;
   store: typeof store;
   doc: typeof doc;
+  overlay: typeof overlay;
+  shortcut: typeof shortcut;
 };

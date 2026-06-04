@@ -98,6 +98,24 @@ export function SettingsView() {
             onChange={(e) => void setSettings({ appLockMinutes: Number(e.target.value) })}
           />
         </Field>
+        <Field label="Global hotkey for the search overlay">
+          <Input
+            value={settings.globalShortcut}
+            onChange={async (e) => {
+              const accel = e.target.value;
+              await setSettings({ globalShortcut: accel });
+              // Push to desktop main process so it can re-register
+              // immediately — no app restart needed. Safe no-op on
+              // surfaces that don't expose the bridge (extension).
+              (window as unknown as { octovault?: { shortcut?: { set: (a: string) => void } } })
+                .octovault?.shortcut?.set(accel);
+            }}
+            placeholder="CommandOrControl+Alt+O"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Electron Accelerator format. Examples: <span className="font-mono">CommandOrControl+Alt+O</span> · <span className="font-mono">CommandOrControl+Shift+Space</span> · <span className="font-mono">Alt+Space</span>. On macOS, <span className="font-mono">CommandOrControl</span> is ⌘ and <span className="font-mono">Alt</span> is ⌥.
+          </p>
+        </Field>
       </Section>
 
       <Separator />

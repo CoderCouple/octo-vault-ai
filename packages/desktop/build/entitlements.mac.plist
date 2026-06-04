@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for OctoVault desktop.
+
+  Electron's V8 JIT compiles JavaScript at runtime, which the macOS
+  hardened runtime blocks by default. These three entitlements unblock
+  exactly what V8 needs and nothing more — Electron itself docs them
+  as the minimum required for Hardened Runtime + notarization.
+
+  - allow-jit:                       lets V8 mark pages as executable
+  - allow-unsigned-executable-memory: lets JIT-emitted code run
+  - allow-dyld-environment-variables: needed by Electron's bootstrapping
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>
