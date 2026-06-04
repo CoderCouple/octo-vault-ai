@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { App, AppProvider, SpotlightOverlay } from "@octovault/ui";
+import { App, AppProvider, FloatingShortcut, SpotlightOverlay } from "@octovault/ui";
 import "@octovault/ui/styles.css";
 import { configureOcr, setPdfWorkerSrc } from "@octovault/core";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -28,14 +28,49 @@ if (!root) throw new Error("root not found");
 
 if (mode === "overlay") {
   // Overlay window: transparent body, no snapshot pump (the main window
-  // owns that work), no main app shell — just the search bar.
+  // owns that work), no main app shell — just the search bar. The
+  // !important rules override styles.css's @apply bg-background on body
+  // which otherwise paints a cream rectangle behind the rounded card.
   document.documentElement.classList.add("overlay-mode");
-  document.body.style.background = "transparent";
+  const s = document.createElement("style");
+  s.textContent = `
+    html, body, #root {
+      background: transparent !important;
+      background-color: transparent !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+  `;
+  document.head.appendChild(s);
   createRoot(root).render(
     <React.StrictMode>
       <AppProvider host={desktopHost}>
         <SpotlightOverlay />
       </AppProvider>
+    </React.StrictMode>,
+  );
+} else if (mode === "shortcut") {
+  // Floating shortcut window: tiny capsule, transparent body. No
+  // AppProvider needed — the shortcut just toggles the overlay via
+  // window.octovault.overlay.toggle(). The !important rules are
+  // needed because @octovault/ui/styles.css applies `bg-background`
+  // to body which would otherwise paint a cream rectangle behind
+  // the rounded badge.
+  document.documentElement.classList.add("shortcut-mode");
+  const s = document.createElement("style");
+  s.textContent = `
+    html, body, #root {
+      background: transparent !important;
+      background-color: transparent !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+    }
+  `;
+  document.head.appendChild(s);
+  createRoot(root).render(
+    <React.StrictMode>
+      <FloatingShortcut />
     </React.StrictMode>,
   );
 } else {

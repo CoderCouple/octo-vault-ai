@@ -4,7 +4,7 @@
 
 import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
 import http from "node:http";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as vault from "./sqlite-store";
@@ -166,18 +166,15 @@ function showOverlay() {
   if (!overlayWindow) {
     overlayWindow = new BrowserWindow({
       width: 640,
-      height: 460,
+      height: 540,           // generous max; with transparent bg the empty area is invisible
       show: false,
       frame: false,
       transparent: true,
-      vibrancy: "fullscreen-ui",
+      backgroundColor: "#00000000",
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
-      hasShadow: true,
-      // Slot it just above other windows on macOS without taking focus
-      // from the front Space.
-      type: process.platform === "darwin" ? "panel" : undefined,
+      hasShadow: false,      // card has its own shadow; window shadow would box the transparent area
       webPreferences: {
         preload: join(__dirname, "../preload/index.mjs"),
         contextIsolation: true,
@@ -255,6 +252,98 @@ function reregisterShortcut(accelerator: string) {
 ipcMain.on("shortcut.set", (_e, accelerator: string) => {
   reregisterShortcut(accelerator);
 });
+
+// --- Floating shortcut window ---
+// Tiny always-on-top capsule with the OctoMark. Drag to reposition;
+// on drop the window snaps to the nearer left/right screen edge and
+// the position is persisted to a plain JSON file in userData (no vault
+// needed — the shortcut should be visible before unlock).
+const SHORTCUT_W = 56;
+const SHORTCUT_H = 56;
+const SHORTCUT_EDGE_MARGIN = 12;
+let shortcutWindow: BrowserWindow | null = null;
+let shortcutSnapTimer: NodeJS.Timeout | null = null;
+
+function shortcutPosFile(): string { return join(app.getPath("userData"), "shortcut-position.json"); }
+function loadShortcutPos(): { x: number; y: number } | null {
+  try { return JSON.parse(readFileSync(shortcutPosFile(), "utf8")); }
+  catch { return null; }
+}
+function saveShortcutPos(x: number, y: number) {
+  try { writeFileSync(shortcutPosFile(), JSON.stringify({ x, y })); }
+  catch (e) { console.warn("[shortcut] save position failed:", e); }
+}
+
+function defaultShortcutPos(): { x: number; y: number } {
+  // Right edge, vertically centred on the primary display's work area.
+  const { x: dx, y: dy, width: dw, height: dh } = screen.getPrimaryDisplay().workArea;
+  return {
+    x: dx + dw - SHORTCUT_W - SHORTCUT_EDGE_MARGIN,
+    y: dy + Math.floor((dh - SHORTCUT_H) / 2),
+  };
+}
+
+function snapShortcutToEdge() {
+  if (!shortcutWindow) return;
+  const [wx, wy] = shortcutWindow.getPosition();
+  const display = screen.getDisplayNearestPoint({ x: wx, y: wy });
+  const { x: dx, y: dy, width: dw, height: dh } = display.workArea;
+  const centerX = wx + SHORTCUT_W / 2;
+  const onRight = centerX > dx + dw / 2;
+  const targetX = onRight
+    ? dx + dw - SHORTCUT_W - SHORTCUT_EDGE_MARGIN
+    : dx + SHORTCUT_EDGE_MARGIN;
+  const targetY = Math.max(dy + SHORTCUT_EDGE_MARGIN,
+                  Math.min(wy, dy + dh - SHORTCUT_H - SHORTCUT_EDGE_MARGIN));
+  shortcutWindow.setPosition(Math.round(targetX), Math.round(targetY), true);
+  saveShortcutPos(targetX, targetY);
+}
+
+function createShortcutWindow() {
+  if (shortcutWindow) return;
+  const pos = loadShortcutPos() ?? defaultShortcutPos();
+  shortcutWindow = new BrowserWindow({
+    width: SHORTCUT_W,
+    height: SHORTCUT_H,
+    x: pos.x,
+    y: pos.y,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.mjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  // Visible across every macOS Space, including fullscreen apps — the
+  // whole point of "always available" is that it's actually always there.
+  if (process.platform === "darwin") {
+    shortcutWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  shortcutWindow.setAlwaysOnTop(true, "floating");
+
+  const searchSuffix = "?mode=shortcut";
+  if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
+    void shortcutWindow.loadURL(process.env["ELECTRON_RENDERER_URL"] + searchSuffix);
+  } else {
+    void shortcutWindow.loadFile(join(__dirname, "../renderer/index.html"), { search: searchSuffix });
+  }
+
+  // Debounced edge snap: after the user stops moving for 250ms, snap
+  // to the nearest left/right edge and persist.
+  shortcutWindow.on("move", () => {
+    if (shortcutSnapTimer) clearTimeout(shortcutSnapTimer);
+    shortcutSnapTimer = setTimeout(snapShortcutToEdge, 250);
+  });
+  shortcutWindow.on("closed", () => { shortcutWindow = null; });
+}
 
 // IPC: Ollama proxy. Renderer asks; main fetches; no CORS.
 ipcMain.handle("ollama.health", async (_e, cfg: OllamaCfg) => {
@@ -371,8 +460,10 @@ ipcMain.handle("ollama.embed", async (_e, cfg: OllamaCfg, model: string, prompt:
 
 void app.whenReady().then(() => {
   createWindow();
+  createShortcutWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!shortcutWindow) createShortcutWindow();
   });
 
   // Global hotkey at boot — uses the persisted setting if a vault
