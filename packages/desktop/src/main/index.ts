@@ -323,8 +323,13 @@ ipcMain.on("shortcut.contextMenu", () => {
 // on drop the window snaps to the nearer left/right screen edge and
 // the position is persisted to a plain JSON file in userData (no vault
 // needed — the shortcut should be visible before unlock).
-const SHORTCUT_W = 56;
-const SHORTCUT_H = 56;
+// Window dimensions match the OctoMark badge size exactly (h-12 w-12
+// = 48px in Tailwind). Anything bigger leaves a visible window frame
+// around the rounded badge — on macOS that shows up as a faint white
+// halo because transparent BrowserWindows are slightly opaque under
+// certain configurations.
+const SHORTCUT_W = 48;
+const SHORTCUT_H = 48;
 const SHORTCUT_EDGE_MARGIN = 12;
 let shortcutWindow: BrowserWindow | null = null;
 let shortcutSnapTimer: NodeJS.Timeout | null = null;

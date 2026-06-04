@@ -91,7 +91,10 @@ export function FloatingShortcut() {
         WebkitAppearance: "none",
         WebkitTapHighlightColor: "transparent",
         cursor: "grab",
-        filter: "drop-shadow(0 6px 18px rgba(0,0,0,0.45)) drop-shadow(0 2px 4px rgba(0,0,0,0.25))",
+        // No drop-shadow: window is now exactly badge-sized, so any
+        // shadow extending past the badge would be clipped. The badge's
+        // black bg + white marks give enough contrast against any
+        // wallpaper without needing a halo.
       } as React.CSSProperties}
       className="flex h-full w-full items-center justify-center transition-transform active:scale-95 focus:outline-none focus-visible:outline-none"
     >
