@@ -35,6 +35,13 @@ export interface Settings {
   ollamaUrl: string;
   llmModel: string;
   embeddingModel: string;
+  // Vision-language model used as the primary OCR for scanned PDFs /
+  // images. Empty string = "disabled; use tesseract." When set and the
+  // model is installed in Ollama, every page that would have hit
+  // tesseract is sent to this model instead — far higher quality on
+  // decorative / non-US-formatted certificates. Tesseract remains
+  // the fallback if the vision model is unreachable or not installed.
+  visionModel: string;
   autoFillPrompt: boolean;
   appLockMinutes: number;
   requireUnlockForSensitive: boolean;
@@ -63,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ollamaUrl: "http://localhost:11434",
   llmModel: "qwen3:8b",
   embeddingModel: "nomic-embed-text",
+  visionModel: "qwen3-vl:8b",
   autoFillPrompt: true,
   appLockMinutes: 5,
   requireUnlockForSensitive: true,

@@ -25,6 +25,29 @@ const ollama = {
     ipcRenderer.invoke("ollama.generate", cfg, body) as Promise<{ response: string }>,
   embed: (cfg: OllamaCfg, model: string, prompt: string) =>
     ipcRenderer.invoke("ollama.embed", cfg, model, prompt) as Promise<{ embedding: number[] }>,
+  vision: (cfg: OllamaCfg, body: { model: string; prompt: string; images: string[]; system?: string; options?: object }) =>
+    ipcRenderer.invoke("ollama.vision", cfg, body) as Promise<{ response: string }>,
+  // Streaming generate. Subscribes a chunk listener, fires the IPC
+  // call, cleans up listeners on completion or error. Returns the
+  // full concatenated text.
+  generateStream: async (
+    cfg: OllamaCfg,
+    body: { model: string; prompt: string; system?: string; options?: object },
+    onToken: (chunk: string) => void,
+  ): Promise<string> => {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const chunkChannel = `ollama.generateStream.chunk:${requestId}`;
+    const doneChannel  = `ollama.generateStream.done:${requestId}`;
+    const chunkHandler = (_e: unknown, chunk: string) => onToken(chunk);
+    ipcRenderer.on(chunkChannel, chunkHandler);
+    try {
+      const r = await ipcRenderer.invoke("ollama.generateStream", cfg, body, requestId) as { response: string };
+      return r.response;
+    } finally {
+      ipcRenderer.removeListener(chunkChannel, chunkHandler);
+      ipcRenderer.removeAllListeners(doneChannel);
+    }
+  },
 };
 
 const bridge = {

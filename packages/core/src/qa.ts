@@ -15,7 +15,7 @@
 // misses.
 
 import MiniSearch from "minisearch";
-import { embed, generate, type OllamaConfig } from "./ollama";
+import { embed, generate, generateStream, type OllamaConfig } from "./ollama";
 import { canonicalValue } from "./resolver";
 import { authorityFor, fieldByKey, PROFILE_FIELDS } from "./schema";
 import type { Entity, FieldRecord, Profile, ProfileKey, VaultProfile } from "./schema";
@@ -28,6 +28,11 @@ import type { StoredDocument } from "./storage";
 export interface QaEngine {
   embed(text: string): Promise<number[]>;
   generate(prompt: string, system?: string): Promise<string>;
+  // Optional. When implemented + an `onAnswerToken` callback is passed
+  // to ask(), the final answer streams token-by-token through the
+  // callback. Returns the full final string for consumers that don't
+  // wire the callback. Falls back to generate() when undefined.
+  generateStream?(prompt: string, system: string | undefined, onToken: (chunk: string) => void): Promise<string>;
 }
 
 /** Build a QaEngine from an OllamaConfig — uses direct fetch. */
@@ -35,6 +40,8 @@ export function fetchQaEngine(cfg: OllamaConfig): QaEngine {
   return {
     embed: (text) => embed(cfg, text),
     generate: (prompt, system) => generate(cfg, { prompt, system, temperature: 0.1 }),
+    generateStream: (prompt, system, onToken) =>
+      generateStream(cfg, { prompt, system, temperature: 0.1 }, onToken),
   };
 }
 
@@ -240,41 +247,59 @@ export async function buildEmbeddingsForDocument(
 // question text.
 const QUERY_EXPANSION_CACHE = new Map<string, string[]>();
 const MAX_QUERY_VARIANTS = 3;
+// Wall-clock budget for the rewrite LLM call. qwen3:8b often takes
+// 10–25s for the rewrite on a cold start; that was the dominant
+// time-to-first-token in the chat UI. Above this budget we proceed
+// with the original query and let the rewrite settle into the cache
+// for next time.
+const QUERY_REWRITE_BUDGET_MS = 1500;
 
-// Ask the local LLM for alternative phrasings of a query that expand
-// abbreviations, form codes, and common synonyms. Returns the original
-// question plus up to N expansions. Cached per-session.
+function expandQueryVariantsRaw(engine: QaEngine, question: string): Promise<string[]> {
+  const trimmed = question.trim();
+  const prompt = `Rewrite this question into up to ${MAX_QUERY_VARIANTS} alternative phrasings that expand abbreviations, form codes (like I-797, I-94, EAD, H-1B), and common synonyms (like DOB / date of birth / birthday). One phrasing per line, no numbering, no preamble.
+
+Question: ${trimmed}
+
+Alternative phrasings:`;
+  return engine.generate(prompt).then((raw) => {
+    const lines = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+      .split("\n")
+      .map((s) => s.trim())
+      .map((s) => s.replace(/^[-*•\d]+\.?\s*/, ""))
+      .filter((s) => s && s.length > 2 && s.length < 200 && s !== trimmed)
+      .slice(0, MAX_QUERY_VARIANTS);
+    return Array.from(new Set([trimmed, ...lines]));
+  });
+}
+
+// Returns the rewrite variants if the LLM can produce them within
+// QUERY_REWRITE_BUDGET_MS. Otherwise returns just the original query
+// and lets the in-flight rewrite finish in the background — its
+// result still seeds the cache, so the next ask on the same wording
+// pays nothing.
 async function expandQueryVariants(engine: QaEngine, question: string): Promise<string[]> {
   const trimmed = question.trim();
   if (!trimmed) return [trimmed];
   const cached = QUERY_EXPANSION_CACHE.get(trimmed);
   if (cached) return cached;
 
-  const prompt = `Rewrite this question into up to ${MAX_QUERY_VARIANTS} alternative phrasings that expand abbreviations, form codes (like I-797, I-94, EAD, H-1B), and common synonyms (like DOB / date of birth / birthday). One phrasing per line, no numbering, no preamble.
-
-Question: ${trimmed}
-
-Alternative phrasings:`;
-
-  try {
-    const raw = await engine.generate(prompt);
-    const lines = raw
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
-      .split("\n")
-      .map((s) => s.trim())
-      .map((s) => s.replace(/^[-*•\d]+\.?\s*/, "")) // strip bullet/number prefixes
-      .filter((s) => s && s.length > 2 && s.length < 200 && s !== trimmed)
-      .slice(0, MAX_QUERY_VARIANTS);
-    // Always include the original; dedupe.
-    const variants = Array.from(new Set([trimmed, ...lines]));
-    QUERY_EXPANSION_CACHE.set(trimmed, variants);
-    return variants;
-  } catch {
-    // Expansion is best-effort — fall back to the original question
-    // alone rather than failing the whole retrieval.
-    return [trimmed];
-  }
+  const original = [trimmed];
+  const rewrite = expandQueryVariantsRaw(engine, trimmed)
+    .then((variants) => {
+      QUERY_EXPANSION_CACHE.set(trimmed, variants);
+      return variants;
+    })
+    .catch(() => {
+      // Cache the fallback too so we don't retry every time.
+      QUERY_EXPANSION_CACHE.set(trimmed, original);
+      return original;
+    });
+  const timeout = new Promise<string[]>((resolve) =>
+    setTimeout(() => resolve(original), QUERY_REWRITE_BUDGET_MS),
+  );
+  return Promise.race([rewrite, timeout]);
 }
 
 // Phase 5 — alias-aware BM25.
@@ -377,6 +402,10 @@ export interface AskOptions {
   scope?: QaScope;
   history?: QaTurn[];
   topK?: number;
+  // When set + the engine supports generateStream, the final answer
+  // streams through this callback. The returned QaResult.answer still
+  // contains the full text. Citations + retrieval are not streamed.
+  onAnswerToken?: (chunk: string) => void;
 }
 
 export async function ask(
@@ -386,7 +415,7 @@ export async function ask(
   lookup: ProfileLookup,
   opts: AskOptions = {},
 ): Promise<QaResult> {
-  const { scope, history = [], topK = 6 } = opts;
+  const { scope, history = [], topK = 6, onAnswerToken } = opts;
 
   if (embeddings.length === 0) {
     return { answer: "I don't have any indexed documents yet. Import a document first.", citations: [], retrieved: [] };
@@ -489,7 +518,11 @@ ${ctxLines}
 
 Answer using the facts and excerpts above. Cite the numbers you used like [1] or [1,3].`;
 
-  const raw = await engine.generate(prompt, SYSTEM);
+  // Stream if both the engine and the caller opted in. Otherwise use
+  // the buffered path so existing callers behave identically.
+  const raw = (onAnswerToken && engine.generateStream)
+    ? await engine.generateStream(prompt, SYSTEM, onAnswerToken)
+    : await engine.generate(prompt, SYSTEM);
 
   // Strip thinking tags if the model used them.
   const answer = raw

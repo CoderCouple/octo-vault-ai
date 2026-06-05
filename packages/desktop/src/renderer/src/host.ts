@@ -8,10 +8,13 @@ import {
   classifyByKeywords,
   DOC_TYPES,
   extractionSchema,
+  hasModel,
   normalizeValue, parseModelJson, PROFILE_FIELDS,
   RELATIONSHIPS,
+  VISION_OCR_PROMPT,
   type EducationRecord, type ExperienceRecord,
   type ExtractionResult, type FieldCandidate, type DocType, type ProfileKey, type QaEngine, type QaResult, type Relationship,
+  type VisionEngine,
 } from "@octovault/core";
 import { ipcStorageAdapter } from "./storage/ipc-adapter";
 
@@ -24,6 +27,8 @@ declare global {
         listModels: (cfg: OllamaCfg) => Promise<string[]>;
         generate: (cfg: OllamaCfg, body: object) => Promise<{ response: string }>;
         embed: (cfg: OllamaCfg, model: string, prompt: string) => Promise<{ embedding: number[] }>;
+        vision: (cfg: OllamaCfg, body: { model: string; prompt: string; images: string[]; system?: string; options?: object }) => Promise<{ response: string }>;
+        generateStream: (cfg: OllamaCfg, body: { model: string; prompt: string; system?: string; options?: object }, onToken: (chunk: string) => void) => Promise<string>;
       };
       bridge: {
         publishSnapshot: (snapshot: { profile: unknown; documents: unknown; entities?: unknown }) => void;
@@ -58,11 +63,11 @@ declare global {
   }
 }
 
-interface OllamaCfg { url: string; llmModel: string; embeddingModel: string }
+interface OllamaCfg { url: string; llmModel: string; embeddingModel: string; visionModel?: string }
 
 async function cfg(): Promise<OllamaCfg> {
   const s = await ipcStorageAdapter.getSettings();
-  return { url: s.ollamaUrl, llmModel: s.llmModel, embeddingModel: s.embeddingModel };
+  return { url: s.ollamaUrl, llmModel: s.llmModel, embeddingModel: s.embeddingModel, visionModel: s.visionModel };
 }
 
 // DOC_TYPES + RELATIONSHIPS now come from @octovault/core so the
@@ -218,6 +223,34 @@ Return JSON:
     const r = await window.octovault!.ollama.embed(c, c.embeddingModel, text);
     return r.embedding;
   },
+
+  // Returns a vision-OCR engine if Ollama is reachable AND the
+  // configured visionModel is actually installed. Otherwise null,
+  // so callers transparently fall back to tesseract. The "model
+  // installed" check is one extra ListModels call per import batch
+  // — cheap and avoids per-page failures when the user hasn't run
+  // `ollama pull qwen2.5vl:7b` yet.
+  async visionEngine(): Promise<VisionEngine | null> {
+    const c = await cfg();
+    if (!c.visionModel) return null;
+    try {
+      const installed = await window.octovault!.ollama.listModels(c);
+      if (!hasModel(installed, c.visionModel)) return null;
+      return {
+        recognize: async (imageBase64: string) => {
+          const r = await window.octovault!.ollama.vision(c, {
+            model: c.visionModel!,
+            prompt: VISION_OCR_PROMPT,
+            images: [imageBase64],
+            options: { temperature: 0.1 },
+          });
+          return r.response;
+        },
+      };
+    } catch {
+      return null;
+    }
+  },
   async ask(question, opts): Promise<QaResult> {
     const c = await cfg();
     const [embeddings, entities, vault, documents] = await Promise.all([
@@ -234,6 +267,13 @@ Return JSON:
           options: { temperature: 0.1 },
         });
         return r.response;
+      },
+      generateStream: async (prompt, system, onToken) => {
+        return window.octovault!.ollama.generateStream(
+          c,
+          { model: c.llmModel, prompt, system, options: { temperature: 0.1 } },
+          onToken,
+        );
       },
     };
     return askLocal(engine, question, embeddings, { entities, vault, documents }, opts);

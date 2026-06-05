@@ -86,3 +86,60 @@ export async function terminateOcrWorker(): Promise<void> {
   await w.terminate();
   workerPromise = null;
 }
+
+// --- Vision-model OCR ----------------------------------------------------
+//
+// Qwen2.5-VL / MiniCPM-V / LLaVA via Ollama produce far better OCR than
+// tesseract on decorative scanned certificates and non-English layouts.
+// This module stays bundler-agnostic — callers inject a `visionEngine`
+// that knows how to reach the model (IPC in Electron, direct fetch
+// elsewhere).
+
+export interface VisionEngine {
+  /** Returns the model's text output for the given image (base64, no prefix). */
+  recognize: (imageBase64: string) => Promise<string>;
+}
+
+const VISION_OCR_PROMPT = `Transcribe every visible piece of text from this document image.
+Output rules:
+- Preserve the reading order (top-to-bottom, left-to-right).
+- Preserve line breaks between distinct lines.
+- Do NOT add markdown, headings, code fences, commentary, or explanations.
+- Do NOT translate; keep the original script (Latin, Devanagari, etc.).
+- If a region is unreadable, output [unreadable] in its place.
+Begin transcription:`;
+
+async function canvasToBase64(canvas: HTMLCanvasElement): Promise<string> {
+  // toDataURL returns "data:image/png;base64,...." — strip the prefix.
+  const url = canvas.toDataURL("image/png");
+  const comma = url.indexOf(",");
+  return comma >= 0 ? url.slice(comma + 1) : url;
+}
+
+export async function ocrCanvasesWithVision(
+  canvases: HTMLCanvasElement[],
+  engine: VisionEngine,
+  opts: OcrOptions = {},
+): Promise<string[]> {
+  const out: string[] = [];
+  for (let i = 0; i < canvases.length; i++) {
+    opts.onProgress?.({
+      page: i + 1,
+      totalPages: canvases.length,
+      status: "recognizing",
+      fraction: i / canvases.length,
+    });
+    const b64 = await canvasToBase64(canvases[i]);
+    const text = await engine.recognize(b64);
+    out.push(text.trim());
+  }
+  opts.onProgress?.({
+    page: canvases.length,
+    totalPages: canvases.length,
+    status: "done",
+    fraction: 1,
+  });
+  return out;
+}
+
+export { VISION_OCR_PROMPT };

@@ -507,13 +507,92 @@ ipcMain.handle("ollama.listModels", async (_e, cfg: OllamaCfg) => {
   } catch { return []; }
 });
 
+// Default keep_alive applied to every generate / generateStream call.
+// Ollama's default is 5 minutes; we extend to 30 so the chat model
+// doesn't get evicted by an idle gap or by a vision OCR pass loading
+// qwen3-vl (which can be 30 GB) in the meantime. Callers can still
+// override by passing their own keep_alive in `body`.
+const KEEP_ALIVE = "30m";
+
 ipcMain.handle("ollama.generate", async (_e, cfg: OllamaCfg, body: object) => {
+  // think:false disables qwen3's chain-of-thought "thinking" tokens
+  // which can take 5–20s of internal reasoning before the model
+  // emits a single answer token. Big TTFT win; small quality cost.
   const r = await fetch(`${cfg.url}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ keep_alive: KEEP_ALIVE, think: false, ...body }),
   });
   if (!r.ok) throw new Error(`Ollama generate failed: ${r.status}`);
+  return r.json();
+});
+
+// Streaming generate. The renderer passes a requestId; we relay each
+// chunk back as `ollama.generateStream.chunk:<requestId>` events so
+// the renderer can show tokens as they arrive. One final
+// `ollama.generateStream.done:<requestId>` event closes the stream.
+// Returning the full text from the handler too, so callers that don't
+// subscribe still get a normal Promise<string>.
+ipcMain.handle("ollama.generateStream", async (e, cfg: OllamaCfg, body: { model: string; prompt: string; system?: string; options?: object }, requestId: string) => {
+  const chunkChannel = `ollama.generateStream.chunk:${requestId}`;
+  const doneChannel  = `ollama.generateStream.done:${requestId}`;
+  try {
+    const r = await fetch(`${cfg.url}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keep_alive: KEEP_ALIVE, think: false, ...body, stream: true }),
+    });
+    if (!r.ok || !r.body) throw new Error(`Ollama generateStream failed: ${r.status}`);
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let full = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        try {
+          // qwen3 splits its output across `response` (visible answer)
+          // and `thinking` (chain-of-thought). think:false above should
+          // suppress thinking entirely, but on Ollama builds that don't
+          // honor the flag we forward thinking tokens too so the UI
+          // doesn't look frozen during the reasoning phase.
+          const obj = JSON.parse(line) as { response?: string; thinking?: string; done?: boolean };
+          const piece = obj.response ?? obj.thinking ?? "";
+          if (piece) {
+            full += piece;
+            e.sender.send(chunkChannel, piece);
+          }
+        } catch { /* ignore partial NDJSON */ }
+      }
+    }
+    e.sender.send(doneChannel);
+    return { response: full };
+  } catch (err) {
+    e.sender.send(doneChannel, String(err));
+    throw err;
+  }
+});
+
+// Vision OCR. Same /api/generate endpoint as text but with an `images`
+// array (base64 strings). Kept as its own handler so the preload + UI
+// can type it correctly and so we can add per-image timeout later.
+ipcMain.handle("ollama.vision", async (_e, cfg: OllamaCfg, body: { model: string; prompt: string; images: string[]; system?: string; options?: object }) => {
+  // Short keep_alive so the (often huge — 30 GB for qwen3-vl) vision
+  // model unloads quickly after the import batch. Otherwise it sits
+  // in VRAM and evicts qwen3:8b on the next chat, costing a reload.
+  // 1m is long enough to keep it loaded across pages of one document.
+  const r = await fetch(`${cfg.url}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keep_alive: "1m", ...body, stream: false }),
+  });
+  if (!r.ok) throw new Error(`Ollama vision failed: ${r.status}`);
   return r.json();
 });
 
@@ -534,9 +613,33 @@ ipcMain.handle("vault.unlock", (_e, password: string) => {
     // hidden even though we created the window at boot.
     if (!currentShowFloatingShortcutFromSettings()) shortcutWindow?.hide();
     else if (!shortcutWindow) createShortcutWindow();
+    // Fire-and-forget warm-up so the first chat doesn't pay the
+    // model-load cost. Won't block unlock; failures are logged only.
+    void warmChatModel().catch((e) => console.warn("[warmup] chat model warm failed:", e));
   }
   return ok;
 });
+
+// Sends a 1-token generate to qwen3:8b (or whatever the user's
+// llmModel is) to pull it into memory. Uses keep_alive so the model
+// stays resident for the rest of the session.
+async function warmChatModel(): Promise<void> {
+  const settings = vault.store.getSettings() as { llmModel?: string; ollamaUrl?: string };
+  const url = settings.ollamaUrl ?? "http://localhost:11434";
+  const model = settings.llmModel ?? "qwen3:8b";
+  const body = {
+    model,
+    prompt: "ok",
+    stream: false,
+    keep_alive: KEEP_ALIVE,
+    options: { num_predict: 1, temperature: 0 },
+  };
+  await fetch(`${url}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 ipcMain.handle("vault.lock", () => { vault.close(); });
 ipcMain.handle("vault.reset", () => { vault.reset(); });
 

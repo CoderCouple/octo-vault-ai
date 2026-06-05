@@ -35,6 +35,11 @@ export interface AppHost {
   extractFromText(documentId: string, text: string): Promise<ExtractionResult>;
   embed(text: string): Promise<number[]>;
   ask(question: string, opts?: AskOptions): Promise<QaResult>;
+  // Returns a VisionEngine adapter when a vision model is configured
+  // + reachable. Used by the import flow as the primary OCR path;
+  // null means "fall back to tesseract." Implementations may cache
+  // a "model installed" check across calls.
+  visionEngine?(): Promise<import("@octovault/core").VisionEngine | null>;
   // Vault lifecycle. Both surfaces support this — extension uses
   // WebCrypto + the IDB auth blob; desktop uses SQLCipher via IPC.
   vaultExists(): Promise<boolean>;

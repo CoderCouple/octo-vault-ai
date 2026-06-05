@@ -145,9 +145,16 @@ export function Documents() {
       let pageCount = 1;
       let ocrUsed = false;
 
+      // Try to get a vision-OCR engine up-front (one model-installed
+      // check per file). When present, pdf.ts uses it instead of
+      // tesseract for any page that needs OCR; on failure it falls
+      // back per-page so a single image error doesn't abort the import.
+      const visionEngine = (await host.visionEngine?.()) ?? undefined;
+
       if (lower.endsWith(".pdf")) {
         updateJob(id, { state: "reading", progress: 0.05, message: "Reading PDF" });
         const out = await extractPdfText(job.file, {
+          visionEngine,
           onProgress: (s, f) => updateJob(id, {
             state: s.toLowerCase().includes("ocr") ? "ocr" : "reading",
             progress: 0.05 + f * 0.4, message: s,
@@ -162,6 +169,7 @@ export function Documents() {
       } else if (job.file.type.startsWith("image/")) {
         updateJob(id, { state: "ocr", progress: 0.1, message: "OCR image" });
         const out = await extractImageText(job.file, {
+          visionEngine,
           onOcrProgress: (p) => updateJob(id, {
             state: "ocr", progress: 0.1 + p.fraction * 0.35,
             message: `OCR ${Math.round(p.fraction * 100)}%`,

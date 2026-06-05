@@ -6,6 +6,18 @@ export interface OllamaConfig {
   url: string;
   llmModel: string;
   embeddingModel: string;
+  // Optional vision model. When set + installed, used as the primary
+  // OCR engine. Falls back to tesseract when absent.
+  visionModel?: string;
+}
+
+export interface VisionOptions {
+  // Base64 image data, no `data:` prefix. Ollama accepts one or many.
+  images: string[];
+  prompt: string;
+  system?: string;
+  temperature?: number;
+  model?: string;          // override cfg.visionModel
 }
 
 // Format can be:
@@ -55,6 +67,83 @@ export function modelMatches(installed: string, configured: string): boolean {
 
 export function hasModel(installed: string[], configured: string): boolean {
   return installed.some((m) => modelMatches(m, configured));
+}
+
+// Multi-modal generate. Used by ocr.ts as the primary OCR path when
+// a vision model (Qwen2.5-VL, MiniCPM-V, LLaVA) is installed locally.
+// One round-trip per image — Ollama accepts arrays but most models
+// produce better output on single-image prompts.
+// Streaming variant of generate(). Calls onToken with each chunk as
+// Ollama emits it. Returns the full concatenated response when done.
+// Each Ollama NDJSON line looks like:
+//   {"model":"…","response":"…","done":false}
+// followed by a final {"done":true,…}. We accumulate partial lines
+// across reads since chunks can split mid-line.
+export async function generateStream(
+  cfg: OllamaConfig,
+  opts: GenerateOptions,
+  onToken: (chunk: string) => void,
+): Promise<string> {
+  const body = {
+    model: cfg.llmModel,
+    prompt: opts.prompt,
+    system: opts.system,
+    stream: true,
+    format: opts.format,
+    options: { temperature: opts.temperature ?? 0.1 },
+  };
+  const r = await fetch(`${cfg.url}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok || !r.body) throw new Error(`Ollama generateStream failed: ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let full = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line) as { response?: string; done?: boolean };
+        if (obj.response) {
+          full += obj.response;
+          onToken(obj.response);
+        }
+      } catch {
+        // Ollama occasionally splits NDJSON oddly; ignore.
+      }
+    }
+  }
+  return full;
+}
+
+export async function vision(cfg: OllamaConfig, opts: VisionOptions): Promise<string> {
+  const model = opts.model ?? cfg.visionModel;
+  if (!model) throw new Error("No vision model configured");
+  const body = {
+    model,
+    prompt: opts.prompt,
+    system: opts.system,
+    images: opts.images,
+    stream: false,
+    options: { temperature: opts.temperature ?? 0.1 },
+  };
+  const r = await fetch(`${cfg.url}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Ollama vision failed: ${r.status}`);
+  const data = (await r.json()) as { response: string };
+  return data.response;
 }
 
 export async function generate(cfg: OllamaConfig, opts: GenerateOptions): Promise<string> {

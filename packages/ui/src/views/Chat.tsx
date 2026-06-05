@@ -22,6 +22,9 @@ interface ChatMessage {
   citations?: QaCitation[];
   scopedEntities?: { id: string; name: string }[];   // for assistant: which entities the question was scoped to
   at: number;
+  // True while tokens are still streaming in. Used by the UI to show
+  // a blinking cursor and skip "no results" empty-state rendering.
+  streaming?: boolean;
 }
 
 // Resolve "@name" tokens in the user's input to entity IDs.
@@ -140,6 +143,18 @@ export function Chat() {
       updatedAt: Date.now(),
     }));
     setBusy(true);
+    // Insert an empty assistant placeholder up-front and stream tokens
+    // into it. This is what makes the chat *feel* fast — the user sees
+    // text appear immediately instead of staring at a spinner.
+    const replyId = crypto.randomUUID();
+    const placeholder: ChatMessage = {
+      id: replyId, role: "assistant", text: "",
+      scopedEntities: scopedEntities.length > 0 ? scopedEntities : undefined,
+      at: Date.now(), streaming: true,
+    };
+    setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
+      ...c, messages: [...c.messages, placeholder], updatedAt: Date.now(),
+    }));
     try {
       // Build chat history from prior turns for query rewriting.
       const history: QaTurn[] = active.messages.map((m) => ({
@@ -148,24 +163,30 @@ export function Chat() {
       const res: QaResult = await host.ask(cleaned, {
         scope: matched.length > 0 ? { entityIds: matched.map((e) => e.id) } : undefined,
         history,
+        onAnswerToken: (chunk) => {
+          setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
+            ...c,
+            messages: c.messages.map((m) => m.id === replyId ? { ...m, text: m.text + chunk } : m),
+          }));
+        },
       });
-      const reply: ChatMessage = {
-        id: crypto.randomUUID(), role: "assistant",
-        text: res.answer, citations: res.citations,
-        scopedEntities: scopedEntities.length > 0 ? scopedEntities : undefined,
-        at: Date.now(),
-      };
+      // Final pass: overwrite with the sanitized text (thinking tags
+      // stripped) and attach citations + clear streaming flag.
       setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
-        ...c, messages: [...c.messages, reply], updatedAt: Date.now(),
+        ...c,
+        messages: c.messages.map((m) => m.id === replyId
+          ? { ...m, text: res.answer, citations: res.citations, streaming: false }
+          : m),
+        updatedAt: Date.now(),
       }));
     } catch (err) {
-      const reply: ChatMessage = {
-        id: crypto.randomUUID(), role: "assistant",
-        text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-        at: Date.now(),
-      };
+      // Replace the streaming placeholder with the error.
       setConversations((cs) => cs.map((c) => c.id !== active.id ? c : {
-        ...c, messages: [...c.messages, reply], updatedAt: Date.now(),
+        ...c,
+        messages: c.messages.map((m) => m.id === replyId
+          ? { ...m, text: `Error: ${err instanceof Error ? err.message : String(err)}`, streaming: false }
+          : m),
+        updatedAt: Date.now(),
       }));
     } finally {
       setBusy(false);
@@ -336,7 +357,12 @@ function MessageRow({ message, documents }: { message: ChatMessage; documents: S
           ))}
         </div>
       )}
-      <MarkdownAnswer text={message.text} citationCount={message.citations?.length ?? 0} jumpTo={citationId} />
+      <div className="relative">
+        <MarkdownAnswer text={message.text} citationCount={message.citations?.length ?? 0} jumpTo={citationId} />
+        {message.streaming && (
+          <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-foreground align-text-bottom" aria-hidden />
+        )}
+      </div>
       {message.citations && message.citations.length > 0 && (
         <div className="space-y-1.5">
           <div className={tx.microcap}>Sources</div>

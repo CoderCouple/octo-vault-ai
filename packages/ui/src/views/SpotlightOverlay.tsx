@@ -9,8 +9,11 @@
 //   locked   → mini unlock prompt (password → host.vaultUnlock)
 //   ready    → search bar + ask flow
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, FileText, Loader2, Lock, Search, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { useAppContext } from "../context";
 import { OctoMark } from "../components/octo-mark";
 import type { QaCitation } from "@octovault/core";
@@ -109,23 +112,33 @@ export function SpotlightOverlay() {
     }
   }
 
-  function renderAnswer(text: string): React.ReactNode[] {
-    const out: React.ReactNode[] = [];
-    let last = 0;
-    const re = /\[(\d+)\]/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) out.push(text.slice(last, m.index));
-      const n = parseInt(m[1]!, 10);
-      out.push(
-        <span key={`${m.index}-${n}`} className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-border bg-card px-1 align-baseline text-[9px] font-medium">
-          {n}
-        </span>,
-      );
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) out.push(text.slice(last));
-    return out;
+  // Markdown-aware answer renderer. Mirrors Chat.tsx so the overlay
+  // doesn't display raw "**bold**" / bullet syntax. Citations like
+  // [1] / [1,3] inside text nodes become inline pill badges (read-only
+  // here — the overlay doesn't support click-to-scroll like Chat does).
+  function renderAnswer(text: string): React.ReactNode {
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
+        components={{
+          p:      ({ children }) => <p className="my-1.5 leading-relaxed">{withCitations(children)}</p>,
+          li:     ({ children }) => <li className="ml-4 list-disc leading-relaxed">{withCitations(children)}</li>,
+          h1:     ({ children }) => <h3 className="mt-2 text-[14px] font-semibold">{children}</h3>,
+          h2:     ({ children }) => <h3 className="mt-2 text-[14px] font-semibold">{children}</h3>,
+          h3:     ({ children }) => <h4 className="mt-2 text-[13.5px] font-medium">{children}</h4>,
+          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+          em:     ({ children }) => <em className="italic">{children}</em>,
+          code:   ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>,
+          pre:    ({ children }) => <pre className="rounded-md bg-muted p-2 font-mono text-xs">{children}</pre>,
+          ul:     ({ children }) => <ul className="my-1.5 space-y-0.5">{children}</ul>,
+          ol:     ({ children }) => <ol className="my-1.5 list-decimal space-y-0.5 pl-4">{children}</ol>,
+          a:      ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="underline underline-offset-2">{children}</a>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    );
   }
 
   return (
@@ -265,4 +278,35 @@ export function SpotlightOverlay() {
       </div>
     </div>
   );
+}
+
+// Wraps every text-node child, replacing [1] / [1,3] inline citation
+// markers with small pill badges. Non-interactive (the overlay has
+// no scroll-to-source target like Chat does).
+function withCitations(children: React.ReactNode): React.ReactNode {
+  return React.Children.map(children, (child) => {
+    if (typeof child !== "string") return child;
+    const parts: React.ReactNode[] = [];
+    const re = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(child)) !== null) {
+      if (m.index > lastIdx) parts.push(child.slice(lastIdx, m.index));
+      const nums = m[1].split(",").map((n) => parseInt(n.trim(), 10));
+      nums.forEach((n, i) => {
+        parts.push(
+          <span
+            key={`${m!.index}-${n}-${i}`}
+            className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-border bg-card px-1 align-baseline text-[9px] font-medium"
+          >
+            {n}
+          </span>,
+        );
+        if (i < nums.length - 1) parts.push(" ");
+      });
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < child.length) parts.push(child.slice(lastIdx));
+    return parts.length > 0 ? <>{parts}</> : child;
+  });
 }
