@@ -2,7 +2,7 @@
 // floating action button, and (on click) asks the background to match
 // fields to the user's profile, then fills them with visible feedback.
 
-import type { DetectedField, Entity, FieldMatch, VaultProfile } from "@octovault/core";
+import { isLikelyOpenField, type DetectedField, type Entity, type FieldDraft, type FieldMatch, type VaultProfile } from "@octovault/core";
 
 const FIELD_ATTR = "data-octovault-id";
 
@@ -391,9 +391,183 @@ function setNativeValue(el: HTMLElement, value: string): boolean {
   return true;
 }
 
+// Phase F2: per-field options and maxlength so the generator knows
+// the choice space + character cap. Radio groups (role=radio /
+// type=radio) and selects both produce an option list; other inputs
+// don't.
+function optionsFor(el: Fillable): string[] | undefined {
+  if (el instanceof HTMLSelectElement) {
+    return Array.from(el.options)
+      .map((o) => o.textContent?.trim() ?? "")
+      .filter((t) => t.length > 0);
+  }
+  if (el instanceof HTMLInputElement && el.type === "radio") {
+    const name = el.name;
+    if (!name) return undefined;
+    const group = el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='radio'][name="${CSS.escape(name)}"]`);
+    return Array.from(group)
+      .map((r) => findLabel(r))
+      .filter((t) => t.length > 0);
+  }
+  return undefined;
+}
+
+function maxLengthOf(el: Fillable): number | undefined {
+  const ml = el.getAttribute("maxlength");
+  if (ml) {
+    const n = parseInt(ml, 10);
+    if (n > 0) return n;
+  }
+  return undefined;
+}
+
+// Phase F5 (partial): form fingerprint — the key under which intent
+// is persisted in chrome.storage. Currently origin + first two path
+// segments; tightened in full F5.
+function formFingerprint(): string {
+  const u = new URL(location.href);
+  const segments = u.pathname.split("/").filter(Boolean).slice(0, 2).join("/");
+  return `${u.origin}/${segments}`;
+}
+
+async function readIntent(): Promise<string | undefined> {
+  const fp = formFingerprint();
+  return new Promise<string | undefined>((resolve) => {
+    try {
+      chrome.storage?.local?.get(`intent:${fp}`, (v) => {
+        const obj = v as { [k: string]: { text: string; at: number } | undefined };
+        resolve(obj[`intent:${fp}`]?.text);
+      });
+    } catch { resolve(undefined); }
+  });
+}
+
+async function writeIntent(text: string): Promise<void> {
+  const fp = formFingerprint();
+  return new Promise<void>((resolve) => {
+    try {
+      chrome.storage?.local?.set({ [`intent:${fp}`]: { text, at: Date.now() } }, () => resolve());
+    } catch { resolve(); }
+  });
+}
+
+// Phase F5: per-form session. Tracks every successful fill across
+// pages of the same form (same fingerprint). Used to show a running
+// total in the HUD and to restore intent on page reloads (which the
+// intent code already does). Stored separately from intent so
+// "End session" can wipe fills without forgetting the intent.
+interface FormSessionFill { url: string; label: string; value: string; at: number; entityId: string; profileKey: string }
+interface FormSession { startedAt: number; fills: FormSessionFill[] }
+
+async function readSession(): Promise<FormSession | undefined> {
+  const fp = formFingerprint();
+  return new Promise<FormSession | undefined>((resolve) => {
+    try {
+      chrome.storage?.local?.get(`session:${fp}`, (v) => {
+        resolve((v as Record<string, FormSession | undefined>)[`session:${fp}`]);
+      });
+    } catch { resolve(undefined); }
+  });
+}
+
+async function appendSessionFills(newFills: FormSessionFill[]): Promise<void> {
+  if (newFills.length === 0) return;
+  const fp = formFingerprint();
+  const existing = (await readSession()) ?? { startedAt: Date.now(), fills: [] };
+  const next: FormSession = {
+    startedAt: existing.startedAt,
+    fills: [...existing.fills, ...newFills],
+  };
+  return new Promise<void>((resolve) => {
+    try {
+      chrome.storage?.local?.set({ [`session:${fp}`]: next }, () => resolve());
+    } catch { resolve(); }
+  });
+}
+
+async function endSession(): Promise<void> {
+  const fp = formFingerprint();
+  return new Promise<void>((resolve) => {
+    try {
+      chrome.storage?.local?.remove([`session:${fp}`, `intent:${fp}`], () => resolve());
+    } catch { resolve(); }
+  });
+}
+
+// Modal-ish intent prompt embedded in the HUD container. Returns the
+// intent the user provided, "" if they chose to skip, or undefined
+// if they cancelled.
+function promptForIntent(): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve) => {
+    const id = "octovault-intent";
+    document.getElementById(id)?.remove();
+    const wrap = document.createElement("div");
+    wrap.id = id;
+    Object.assign(wrap.style, {
+      position: "fixed", right: "20px", bottom: "70px", zIndex: "2147483647",
+      width: "340px",
+      background: "#0a0a0a", color: "#f5f5f5", border: "1px solid rgba(245,245,245,0.18)",
+      borderRadius: "10px", fontFamily: "Inter, system-ui, sans-serif",
+      boxShadow: "0 10px 36px rgba(0,0,0,0.5)",
+      padding: "12px",
+      display: "flex", flexDirection: "column", gap: "8px",
+    } satisfies Partial<CSSStyleDeclaration>);
+    const head = document.createElement("div");
+    head.textContent = "What are you filling this out for?";
+    Object.assign(head.style, { fontSize: "12px", fontWeight: "600" } satisfies Partial<CSSStyleDeclaration>);
+    const sub = document.createElement("div");
+    sub.textContent = "A sentence or two — dates, purpose, who's involved. OctoVault uses this to draft text fields.";
+    Object.assign(sub.style, { fontSize: "10.5px", opacity: "0.7", lineHeight: "1.4" } satisfies Partial<CSSStyleDeclaration>);
+    const ta = document.createElement("textarea");
+    ta.rows = 3;
+    Object.assign(ta.style, {
+      background: "#1a1a1a", color: "#f5f5f5", border: "1px solid rgba(245,245,245,0.18)",
+      borderRadius: "6px", padding: "8px", fontSize: "12px", fontFamily: "inherit",
+      resize: "vertical",
+    } satisfies Partial<CSSStyleDeclaration>);
+    const actions = document.createElement("div");
+    Object.assign(actions.style, { display: "flex", justifyContent: "flex-end", gap: "6px" } satisfies Partial<CSSStyleDeclaration>);
+    const skip = document.createElement("button");
+    skip.textContent = "Skip";
+    Object.assign(skip.style, {
+      background: "transparent", color: "#f5f5f5", border: "1px solid rgba(245,245,245,0.25)",
+      borderRadius: "6px", padding: "4px 10px", fontSize: "11px", cursor: "pointer",
+    } satisfies Partial<CSSStyleDeclaration>);
+    const cont = document.createElement("button");
+    cont.textContent = "Continue";
+    Object.assign(cont.style, {
+      background: "#f5f5f5", color: "#0a0a0a", border: "none",
+      borderRadius: "6px", padding: "4px 12px", fontSize: "11px", fontWeight: "600", cursor: "pointer",
+    } satisfies Partial<CSSStyleDeclaration>);
+    skip.addEventListener("click", () => { wrap.remove(); resolve(""); });
+    cont.addEventListener("click", () => {
+      const v = ta.value.trim();
+      wrap.remove();
+      resolve(v);
+    });
+    actions.appendChild(skip); actions.appendChild(cont);
+    wrap.appendChild(head); wrap.appendChild(sub); wrap.appendChild(ta); wrap.appendChild(actions);
+    document.documentElement.appendChild(wrap);
+    ta.focus();
+  });
+}
+
 // Phase C: each fill produces a structured report. The HUD renders
 // from this so users can see *why* a field was skipped, not just
 // the headline count.
+// Phase F3-F4: drafts surface in the HUD with editable values and a
+// per-row Fill button. Generated values never auto-fill.
+interface HudDraft {
+  fieldId: string;
+  label: string;
+  draft: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+  el?: HTMLElement;
+  fieldType: string;
+  options?: string[];
+}
+
 interface FillReportRow {
   fieldId: string;
   label: string;
@@ -430,6 +604,37 @@ async function runFill() {
     toast("No fillable fields detected on this view.");
     return;
   }
+
+  // Phase F2: collect options + maxlengths per element so the
+  // generator can pick from choice fields and respect character caps.
+  const fieldOptions: Record<string, string[]> = {};
+  const fieldMaxLengths: Record<string, number> = {};
+  for (const d of detectedSansParts) {
+    const opts = optionsFor(d.el);
+    if (opts && opts.length) fieldOptions[d.field.id] = opts;
+    const ml = maxLengthOf(d.el);
+    if (ml) fieldMaxLengths[d.field.id] = ml;
+  }
+
+  // Phase F2: any field that looks like it needs *generated* content
+  // gets the intent prompt before we ship to the matcher. We check
+  // for stored intent first — once given for a form, it's reused
+  // across the session.
+  const wouldGenerate = detectedSansParts.some((d) =>
+    isLikelyOpenField(d.field, !!fieldOptions[d.field.id]?.length),
+  );
+  let intent = "";
+  if (wouldGenerate) {
+    const stored = await readIntent();
+    if (stored != null) intent = stored;
+    else {
+      const got = await promptForIntent();
+      if (got === undefined) return; // cancelled
+      intent = got;
+      if (intent) await writeIntent(intent);
+    }
+  }
+
   toast("Matching fields…");
 
   // Composites flow alongside regular fields. The synthetic id is
@@ -446,6 +651,9 @@ async function runFill() {
         ...composites.map((c) => c.field),
       ],
       candidates: candidates.map((c) => c.cand),
+      intent,
+      fieldOptions,
+      fieldMaxLengths,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -465,8 +673,9 @@ async function runFill() {
     source?: "desktop" | "extension";
     fields: DetectedField[];        // post-enrichment; source of truth for labels
     enrichment?: { corrections: Record<string, { label?: string }>; promotions: { id: string; label: string; type: string }[] };
+    drafts?: FieldDraft[];           // Phase F3 — AI-generated drafts for open fields
   };
-  const { matches, vault, entities, source = "extension", fields: enrichedFields, enrichment } = data;
+  const { matches, vault, entities, source = "extension", fields: enrichedFields, enrichment, drafts = [] } = data;
   const entityName = (eid: string) =>
     entities.find((e) => e.id === eid)?.name ?? (eid === "self" ? "Self" : eid);
   const totalProfileKeys = Object.values(vault).reduce((n, p) => n + Object.keys(p).length, 0);
@@ -592,11 +801,45 @@ async function runFill() {
   console.log("Rows:", rows);
   console.groupEnd();
 
-  if (totalProfileKeys === 0) {
+  if (totalProfileKeys === 0 && drafts.length === 0) {
     toast(`Vault (${source}) is empty. Open OctoVault and import a doc.`);
     return;
   }
-  showHud({ rows, source, filled, skipped });
+  // Phase F3-F4: per-draft elements for the HUD. We look up the DOM
+  // element here so showHud can render an editable + "Fill" button
+  // that writes back to the element when the user approves.
+  const draftItems: HudDraft[] = [];
+  for (const d of drafts) {
+    const field = enrichedFields.find((f) => f.id === d.fieldId);
+    if (!field) continue;
+    const el = elFor(d.fieldId);
+    draftItems.push({
+      fieldId: d.fieldId,
+      label: field.label || d.fieldId,
+      draft: d.draft,
+      reason: d.reason,
+      confidence: d.confidence,
+      el: el ?? undefined,
+      fieldType: field.type,
+      options: fieldOptions[d.fieldId],
+    });
+  }
+  // Phase F5: append this page's filled rows to the persistent
+  // session so the HUD can show a running total across pages.
+  const filledRows = rows.filter((r) => r.status === "filled");
+  if (filledRows.length > 0) {
+    void appendSessionFills(filledRows.map((r) => ({
+      url: location.href,
+      label: r.label,
+      value: r.value ?? "",
+      at: Date.now(),
+      entityId: r.entityName ?? "self",
+      profileKey: r.profileKey ?? "",
+    })));
+  }
+
+  const session = await readSession();
+  showHud({ rows, source, filled, skipped, drafts: draftItems, session });
   watchForRejections(rows);
 }
 
@@ -705,7 +948,7 @@ function flagRejected(fieldId: string) {
 // Phase C HUD — dismissible card showing the structured fill report.
 // Replaces the single-line toast for actual fill results (toast is
 // still used for "no fields detected" and other one-liners).
-function showHud(report: { rows: FillReportRow[]; source: string; filled: number; skipped: number }) {
+function showHud(report: { rows: FillReportRow[]; source: string; filled: number; skipped: number; drafts?: HudDraft[]; session?: FormSession }) {
   const id = "octovault-hud";
   document.getElementById(id)?.remove();
 
@@ -727,7 +970,32 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
     padding: "10px 12px", borderBottom: "1px solid rgba(245,245,245,0.12)",
     fontSize: "12px", fontWeight: "600",
   } satisfies Partial<CSSStyleDeclaration>);
-  header.innerHTML = `<span>Filled ${report.filled} · Skipped ${report.skipped} <span style="opacity:0.6;font-weight:500">· ${report.source}</span></span>`;
+  // Phase F5: running total across the multi-page session, when one
+  // exists. Pages are de-duplicated by URL — fills are per-page but
+  // the total reflects the whole flow.
+  const session = report.session;
+  const sessionPageCount = session
+    ? new Set(session.fills.map((f) => f.url)).size
+    : 0;
+  const sessionTotal = session?.fills.length ?? 0;
+  header.innerHTML = `<span>Filled ${report.filled} · Skipped ${report.skipped} <span style="opacity:0.6;font-weight:500">· ${report.source}</span>${sessionTotal > 0 ? `<div style="font-size:10px;opacity:0.65;font-weight:500;margin-top:2px">Session: ${sessionTotal} across ${sessionPageCount} page${sessionPageCount === 1 ? "" : "s"}</div>` : ""}</span>`;
+  const headerActions = document.createElement("div");
+  Object.assign(headerActions.style, { display: "flex", alignItems: "center", gap: "4px" } satisfies Partial<CSSStyleDeclaration>);
+  if (sessionTotal > 0) {
+    const endBtn = document.createElement("button");
+    endBtn.textContent = "End session";
+    Object.assign(endBtn.style, {
+      background: "transparent", color: "#f5f5f5",
+      border: "1px solid rgba(245,245,245,0.2)", borderRadius: "6px",
+      padding: "2px 8px", fontSize: "10px", cursor: "pointer",
+    } satisfies Partial<CSSStyleDeclaration>);
+    endBtn.addEventListener("click", async () => {
+      await endSession();
+      wrap.remove();
+      toast("Session ended.");
+    });
+    headerActions.appendChild(endBtn);
+  }
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "×";
   Object.assign(closeBtn.style, {
@@ -735,7 +1003,8 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
     fontSize: "18px", lineHeight: "1", cursor: "pointer", padding: "0 4px",
   } satisfies Partial<CSSStyleDeclaration>);
   closeBtn.addEventListener("click", () => wrap.remove());
-  header.appendChild(closeBtn);
+  headerActions.appendChild(closeBtn);
+  header.appendChild(headerActions);
   wrap.appendChild(header);
 
   const body = document.createElement("div");
@@ -787,6 +1056,123 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
     body.appendChild(section);
   }
   wrap.appendChild(body);
+
+  // Phase F3-F4: drafts section. Each draft renders as an editable
+  // textarea (or button list for choice fields) with a per-row Fill
+  // button. Drafts never auto-fill — that's the whole point.
+  const drafts = report.drafts ?? [];
+  if (drafts.length > 0) {
+    const section = document.createElement("div");
+    Object.assign(section.style, {
+      borderTop: "1px solid rgba(245,245,245,0.12)",
+      padding: "8px 10px 10px",
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    const head = document.createElement("div");
+    head.textContent = `Drafts (${drafts.length}) — review before filling`;
+    Object.assign(head.style, {
+      fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.15em",
+      opacity: "0.6", margin: "0 0 6px",
+    } satisfies Partial<CSSStyleDeclaration>);
+    section.appendChild(head);
+
+    for (const d of drafts) {
+      const row = document.createElement("div");
+      Object.assign(row.style, {
+        marginBottom: "8px", padding: "6px 8px",
+        background: "rgba(245,245,245,0.05)", borderRadius: "6px",
+      } satisfies Partial<CSSStyleDeclaration>);
+      const labelEl = document.createElement("div");
+      labelEl.innerHTML = `<span style="opacity:0.95">${escapeHtml(d.label)}</span> <span style="opacity:0.45;font-size:10px">· ${d.confidence}</span>`;
+      Object.assign(labelEl.style, { fontSize: "11.5px", marginBottom: "4px" } satisfies Partial<CSSStyleDeclaration>);
+      row.appendChild(labelEl);
+
+      // Choice draft → render options as buttons. Free-text draft →
+      // editable textarea.
+      if (d.options?.length) {
+        const list = document.createElement("div");
+        Object.assign(list.style, { display: "flex", flexWrap: "wrap", gap: "4px" } satisfies Partial<CSSStyleDeclaration>);
+        for (const opt of d.options) {
+          const btn = document.createElement("button");
+          btn.textContent = opt;
+          const selected = opt.trim().toLowerCase() === d.draft.trim().toLowerCase();
+          Object.assign(btn.style, {
+            background: selected ? "#f5f5f5" : "transparent",
+            color: selected ? "#0a0a0a" : "#f5f5f5",
+            border: "1px solid rgba(245,245,245,0.25)",
+            borderRadius: "999px", padding: "2px 8px",
+            fontSize: "10.5px", cursor: "pointer",
+          } satisfies Partial<CSSStyleDeclaration>);
+          btn.addEventListener("click", () => {
+            if (!d.el) return;
+            // For radio groups, click the matching radio. For
+            // selects, set its value to the matching option.
+            if (d.el instanceof HTMLInputElement && d.el.type === "radio") {
+              const group = d.el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='radio'][name="${CSS.escape(d.el.name)}"]`);
+              for (const r of group) {
+                if (findLabel(r).trim().toLowerCase() === opt.trim().toLowerCase()) {
+                  r.checked = true;
+                  r.dispatchEvent(new Event("change", { bubbles: true }));
+                  r.dispatchEvent(new Event("input", { bubbles: true }));
+                  btn.style.background = "#34d399"; btn.style.color = "#0a0a0a";
+                  return;
+                }
+              }
+            } else if (d.el instanceof HTMLSelectElement) {
+              const match = Array.from(d.el.options).find((o) =>
+                (o.textContent?.trim().toLowerCase() === opt.trim().toLowerCase()) || o.value === opt);
+              if (match) {
+                d.el.value = match.value;
+                d.el.dispatchEvent(new Event("input", { bubbles: true }));
+                d.el.dispatchEvent(new Event("change", { bubbles: true }));
+                btn.style.background = "#34d399"; btn.style.color = "#0a0a0a";
+              }
+            }
+          });
+          list.appendChild(btn);
+        }
+        row.appendChild(list);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = d.draft;
+        ta.rows = 3;
+        Object.assign(ta.style, {
+          width: "100%", boxSizing: "border-box",
+          background: "#1a1a1a", color: "#f5f5f5", border: "1px solid rgba(245,245,245,0.18)",
+          borderRadius: "6px", padding: "6px 8px",
+          fontSize: "11.5px", fontFamily: "inherit", resize: "vertical",
+        } satisfies Partial<CSSStyleDeclaration>);
+        row.appendChild(ta);
+        const actions = document.createElement("div");
+        Object.assign(actions.style, { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" } satisfies Partial<CSSStyleDeclaration>);
+        const reasonEl = document.createElement("span");
+        reasonEl.textContent = d.reason;
+        Object.assign(reasonEl.style, { fontSize: "10px", opacity: "0.55" } satisfies Partial<CSSStyleDeclaration>);
+        const fillBtn = document.createElement("button");
+        fillBtn.textContent = "Fill";
+        Object.assign(fillBtn.style, {
+          background: "#f5f5f5", color: "#0a0a0a", border: "none",
+          borderRadius: "6px", padding: "3px 12px",
+          fontSize: "10.5px", fontWeight: "600", cursor: "pointer",
+        } satisfies Partial<CSSStyleDeclaration>);
+        fillBtn.addEventListener("click", () => {
+          if (!d.el) return;
+          const ok = setNativeValue(d.el, ta.value);
+          if (ok) {
+            fillBtn.textContent = "Filled";
+            fillBtn.style.background = "#34d399";
+            fillBtn.disabled = true;
+          }
+        });
+        actions.appendChild(reasonEl);
+        actions.appendChild(fillBtn);
+        row.appendChild(actions);
+      }
+      section.appendChild(row);
+    }
+    wrap.appendChild(section);
+  }
+
   document.documentElement.appendChild(wrap);
 }
 

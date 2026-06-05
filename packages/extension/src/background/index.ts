@@ -4,9 +4,10 @@
 
 import {
   enrichDetection,
-  generate, generateJson, isReachable, indexedDbAdapter,
-  matchFormFields,
-  type DetectedField, type Entity, type OllamaConfig, type SuspiciousCandidate, type VaultProfile,
+  generate, generateFieldDrafts, generateJson, isReachable, indexedDbAdapter,
+  isLikelyOpenField, matchFormFields,
+  type DetectedField, type Entity, type FieldDraft, type OllamaConfig,
+  type OpenField, type SuspiciousCandidate, type VaultProfile,
 } from "@octovault/core";
 import { bridgeReachable, fetchProfileFromBridge } from "../bridge";
 
@@ -107,10 +108,50 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
       }
 
       const matches = await matchFormFields(llm, fields, vault, entities);
-      // Return the *final* fields so the content script can show the
-      // enriched labels in the HUD and so it knows which ids were
-      // promoted (anything not in rawFields' id set is a promotion).
-      return { matches, vault, entities, source, fields, enrichment };
+
+      // Phase F2-F4: AI-generated drafts for "open" fields. A field is
+      // open when isLikelyOpenField() says so AND the matcher returned
+      // no profileKey for it. We collect those, ask the generator for
+      // drafts, return them as a sibling list. The content script
+      // surfaces drafts in the HUD as editable values; the user must
+      // explicitly approve before filling.
+      const intent = (msg.intent as string | undefined) ?? "";
+      const fieldsById = new Map(fields.map((f) => [f.id, f]));
+      const openFields: OpenField[] = [];
+      const fieldOptions = (msg.fieldOptions as Record<string, string[]> | undefined) ?? {};
+      const fieldMaxLengths = (msg.fieldMaxLengths as Record<string, number> | undefined) ?? {};
+      for (const m of matches) {
+        if (m.profileKey) continue;          // matched to a profile, no need to generate
+        const f = fieldsById.get(m.fieldId);
+        if (!f) continue;
+        const opts = fieldOptions[f.id];
+        if (!isLikelyOpenField(f, !!opts?.length)) continue;
+        openFields.push({
+          field: f,
+          options: opts,
+          maxLength: fieldMaxLengths[f.id],
+        });
+      }
+
+      // Compact profile summary for the generator. We pull from the
+      // routed entity per match — most open fields are self-related.
+      // For simplicity (v1) we use self only.
+      const selfProfile = vault["self"] ?? {};
+      const profileSummary: Record<string, string> = {};
+      for (const [k, rec] of Object.entries(selfProfile)) {
+        const cid = rec?.canonicalId;
+        const value = rec?.candidates.find((c) => c.id === cid)?.value;
+        // Drop sensitive keys before sending to generator.
+        if (["ssn", "passportNumber", "driversLicenseNumber", "nationalIdNumber", "taxIdNumber"].includes(k)) continue;
+        if (value) profileSummary[k] = value;
+      }
+
+      let drafts: FieldDraft[] = [];
+      if (openFields.length > 0) {
+        drafts = await generateFieldDrafts(llm, openFields, intent, profileSummary);
+      }
+
+      return { matches, vault, entities, source, fields, enrichment, drafts };
     }
 
     case "bridge.health":
