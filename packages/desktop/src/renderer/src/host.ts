@@ -193,7 +193,11 @@ Return JSON:
         userEdited: false,
       }));
 
-    return { docType, entityName, relationshipHint, candidates, education, experience };
+    // TODO Phase 4: collapse this onto core's extractFromText by
+    // making it accept a transport interface (like QaEngine in qa.ts).
+    // Right now extras come back empty from the desktop renderer
+    // because this duplicated extractor doesn't ask the LLM for them.
+    return { docType, entityName, relationshipHint, candidates, extras: [], education, experience };
   },
   async embed(text): Promise<number[]> {
     const c = await cfg();

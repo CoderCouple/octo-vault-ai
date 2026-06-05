@@ -21,6 +21,7 @@
   "dependencies": {
     "idb-keyval": "^6.2.1",
     "jsonrepair": "^3.11.0",
+    "minisearch": "^7.1.0",
     "pdfjs-dist": "^4.7.76",
     "tesseract.js": "^5.1.1"
   },

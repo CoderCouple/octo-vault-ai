@@ -1,7 +1,20 @@
 // Local Q&A with source citations. Embeddings of facts + document
-// chunks live in IndexedDB. On a question: embed query, cosine top-k,
-// stuff into a prompt, ask the local LLM, return answer + citations.
+// chunks live in IndexedDB / SQLCipher. Retrieval is hybrid:
+//   1. Rewrite the question into 1–N retrieval variants (LLM call,
+//      cached per-session) that expand abbreviations and synonyms —
+//      "I797" → "I-797", "H-1B approval notice", etc.
+//   2. For each variant, run BOTH cosine (vector) and BM25 (keyword)
+//      retrieval.
+//   3. Reciprocal Rank Fusion (RRF) merges all per-variant rankings
+//      from both retrievers into one fused score.
+//   4. rerank() applies MMR + recency + authority boosts and trims
+//      to topK.
+// Hybrid retrieval catches abbreviation queries (vector can't match
+// "I797" semantically because the embeddings model treats it as
+// random tokens) and exact-string queries that vector retrieval
+// misses.
 
+import MiniSearch from "minisearch";
 import { embed, generate, type OllamaConfig } from "./ollama";
 import { canonicalValue } from "./resolver";
 import { authorityFor, fieldByKey, PROFILE_FIELDS } from "./schema";
@@ -220,6 +233,82 @@ export async function buildEmbeddingsForDocument(
   return out;
 }
 
+// --- Hybrid retrieval helpers (Phase 3) ---
+
+// Per-process cache for LLM query expansions. Cleared on app restart,
+// not on vault lock — query strings are not secret. Keyed by raw
+// question text.
+const QUERY_EXPANSION_CACHE = new Map<string, string[]>();
+const MAX_QUERY_VARIANTS = 3;
+
+// Ask the local LLM for alternative phrasings of a query that expand
+// abbreviations, form codes, and common synonyms. Returns the original
+// question plus up to N expansions. Cached per-session.
+async function expandQueryVariants(engine: QaEngine, question: string): Promise<string[]> {
+  const trimmed = question.trim();
+  if (!trimmed) return [trimmed];
+  const cached = QUERY_EXPANSION_CACHE.get(trimmed);
+  if (cached) return cached;
+
+  const prompt = `Rewrite this question into up to ${MAX_QUERY_VARIANTS} alternative phrasings that expand abbreviations, form codes (like I-797, I-94, EAD, H-1B), and common synonyms (like DOB / date of birth / birthday). One phrasing per line, no numbering, no preamble.
+
+Question: ${trimmed}
+
+Alternative phrasings:`;
+
+  try {
+    const raw = await engine.generate(prompt);
+    const lines = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+      .split("\n")
+      .map((s) => s.trim())
+      .map((s) => s.replace(/^[-*•\d]+\.?\s*/, "")) // strip bullet/number prefixes
+      .filter((s) => s && s.length > 2 && s.length < 200 && s !== trimmed)
+      .slice(0, MAX_QUERY_VARIANTS);
+    // Always include the original; dedupe.
+    const variants = Array.from(new Set([trimmed, ...lines]));
+    QUERY_EXPANSION_CACHE.set(trimmed, variants);
+    return variants;
+  } catch {
+    // Expansion is best-effort — fall back to the original question
+    // alone rather than failing the whole retrieval.
+    return [trimmed];
+  }
+}
+
+// Build an in-memory BM25 index over the embedding pool's text. Tiny
+// (~9 KB lib + low-thousands of docs) so we rebuild on every ask;
+// keeps the code simple and avoids cache-invalidation bugs.
+function buildBm25(pool: EmbeddingRecord[]): MiniSearch<EmbeddingRecord> {
+  const ms = new MiniSearch<EmbeddingRecord>({
+    fields: ["text"],
+    storeFields: ["id"],
+    idField: "id",
+    searchOptions: {
+      boost: { text: 1 },
+      fuzzy: 0.2,        // small fuzziness handles typos + plural forms
+      prefix: true,      // "expir" matches "expiration"
+    },
+  });
+  ms.addAll(pool);
+  return ms;
+}
+
+// Reciprocal Rank Fusion. Each ranking is a list of EmbeddingRecord
+// ids ordered best-first. Returns a Map<id, fused-score>. Standard
+// k = 60 from the original RRF paper (Cormack et al., 2009).
+function rrf(rankings: string[][], k = 60): Map<string, number> {
+  const fused = new Map<string, number>();
+  for (const ranking of rankings) {
+    for (let rank = 0; rank < ranking.length; rank++) {
+      const id = ranking[rank]!;
+      fused.set(id, (fused.get(id) ?? 0) + 1 / (k + rank));
+    }
+  }
+  return fused;
+}
+
 // --- Query ---
 // Why the prompt is shaped this way:
 // 1. Snippets are presented as natural sentences ("Sunil's passport
@@ -299,24 +388,50 @@ export async function ask(
     };
   }
 
-  // Query rewriting: if there's prior conversation context, ask the
-  // model to expand the current question into a standalone retrieval
-  // query that name-checks any people referenced. Cheap, big quality win.
-  const retrievalQuery = history.length > 0
+  // Query rewriting (history-aware): if there's prior conversation
+  // context, rewrite "she" / "their" / "the one I mentioned" into the
+  // standalone names. Separate from variant expansion below.
+  const baseQuery = history.length > 0
     ? await rewriteQuery(engine, question, history, lookup)
     : question;
 
-  // Embed the (possibly rewritten) query and rank.
-  // Two-stage: cosine narrows down to a wider initial pool, then
-  // rerank() blends in fact/recency/authority signals and MMR-
-  // diversifies to topK. The wider initial pool gives MMR room to
-  // swap a near-duplicate for a more diverse result.
-  const qVec = await engine.embed(retrievalQuery);
+  // --- Hybrid retrieval (Phase 3) ---
+  // Step 1: expand into multiple retrieval variants that cover
+  // abbreviation / synonym gaps the embedding model misses.
+  // Step 2: for each variant, run both cosine and BM25.
+  // Step 3: RRF-fuse all per-variant per-retriever rankings into one
+  // ordered list.
+  // Step 4: take the top initialPoolSize for the existing
+  // rerank() (which handles MMR + recency + authority).
+  const variants = await expandQueryVariants(engine, baseQuery);
+  const bm25 = buildBm25(pool);
+  const poolById = new Map(pool.map((p) => [p.id, p]));
   const initialPoolSize = Math.max(topK * INITIAL_POOL_MULTIPLIER, MIN_INITIAL_POOL);
-  const initial = pool.map((e) => ({ e, score: cosine(qVec, e.vector) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, initialPoolSize);
-  const scored = rerank(initial, lookup, topK);
+
+  const rankings: string[][] = [];
+  for (const v of variants) {
+    // Vector ranking: full-pool cosine sort.
+    const qVec = await engine.embed(v);
+    const vecOrdered = pool
+      .map((e) => ({ id: e.id, score: cosine(qVec, e.vector) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, initialPoolSize)
+      .map((x) => x.id);
+    rankings.push(vecOrdered);
+
+    // BM25 ranking: keyword + fuzzy + prefix over the same pool.
+    const bm25Results = bm25.search(v).slice(0, initialPoolSize).map((r) => String(r.id));
+    if (bm25Results.length > 0) rankings.push(bm25Results);
+  }
+
+  // Fuse + take top initialPoolSize for the existing rerank() to chew on.
+  const fused = rrf(rankings);
+  const fusedOrdered = Array.from(fused.entries())
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, initialPoolSize)
+    .map(([id, score]) => ({ e: poolById.get(id)!, score }))
+    .filter((x) => x.e);
+  const scored = rerank(fusedOrdered, lookup, topK);
 
   const retrieved = scored.map((s) => s.e);
 

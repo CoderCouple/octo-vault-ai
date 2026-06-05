@@ -36,16 +36,36 @@ export const SELF_ENTITY_ID = "self";
 
 // What kind of document this is. The classifier picks one (or unknown).
 export type DocType =
+  // Identity
   | "passport"
   | "drivers_license"
   | "national_id"
   | "ssn_card"
+  // Civil status / family events (Phase 2)
+  | "marriage_certificate"
+  | "marriage_license"
+  | "divorce_decree"
+  | "birth_certificate"
+  | "adoption_record"
+  | "death_certificate"
+  | "court_order"
+  // Immigration (Phase 2)
+  | "i797_approval_notice"   // USCIS approval (H-1B, L-1, O-1, etc.)
+  | "visa_stamp"              // visa sticker in passport
+  | "green_card"              // permanent resident card
+  | "naturalization_certificate"
+  | "i94_record"              // arrival/departure record
+  | "ead_card"                // employment authorization document
+  // Tax / employment / finance
   | "tax_form"
   | "paystub"
-  | "utility_bill"
+  | "voe_letter"              // verification of employment
   | "bank_statement"
-  | "insurance_card"
+  // Utility / address-proof
+  | "utility_bill"
   | "lease"
+  // Insurance / vehicle / school / medical
+  | "insurance_card"
   | "vehicle_registration"
   | "school_letter"
   | "employment_letter"
@@ -194,7 +214,7 @@ export interface ProfileField {
   aliases: string[];
   sensitivity: Sensitivity;
   kind: FieldKind;
-  category: "personal" | "contact" | "government_id" | "employment" | "emergency";
+  category: "personal" | "contact" | "government_id" | "immigration" | "civil_status" | "employment" | "emergency";
 }
 
 export const PROFILE_FIELDS = [
@@ -232,6 +252,30 @@ export const PROFILE_FIELDS = [
   { key: "employerName",         label: "Employer",           aliases: ["company", "current employer"],    sensitivity: "personal", kind: "text",         category: "employment" },
   { key: "jobTitle",             label: "Job Title",          aliases: ["position", "role", "occupation"], sensitivity: "personal", kind: "text",         category: "employment" },
   { key: "employmentStartDate",  label: "Employment Start Date", aliases: ["start date", "date hired"],   sensitivity: "personal", kind: "date_monotonic", category: "employment" },
+  { key: "employmentEndDate",    label: "Employment End Date",   aliases: ["end date", "last day"],        sensitivity: "personal", kind: "date_monotonic", category: "employment" },
+  { key: "annualSalary",         label: "Annual Salary",      aliases: ["salary", "base pay"],             sensitivity: "highly_sensitive", kind: "text", category: "employment" },
+
+  // Immigration — fields specifically on I-797, visa stamps, green cards, EADs, I-94
+  { key: "visaType",             label: "Visa Type / Classification",  aliases: ["visa class", "visa category", "nonimmigrant classification"],     sensitivity: "personal",         kind: "text",           category: "immigration" },
+  { key: "visaReceiptNumber",    label: "USCIS Receipt Number",        aliases: ["receipt number", "case number", "petition number", "i797 number"],  sensitivity: "highly_sensitive", kind: "id_unique",      category: "immigration" },
+  { key: "visaValidFrom",        label: "Visa Validity From",          aliases: ["valid from", "petition valid from", "h1b start", "i797 valid from"], sensitivity: "personal",         kind: "date_monotonic", category: "immigration" },
+  { key: "visaValidUntil",       label: "Visa Validity Until",         aliases: ["valid until", "petition valid until", "h1b expiry", "i797 expiry", "visa expiry", "expires"], sensitivity: "personal", kind: "date_monotonic", category: "immigration" },
+  { key: "visaPetitioner",       label: "Petitioner (Sponsor)",        aliases: ["petitioner", "sponsor", "employer petitioner"],                  sensitivity: "personal",         kind: "text",           category: "immigration" },
+  { key: "visaBeneficiary",      label: "Visa Beneficiary",            aliases: ["beneficiary"],                                                   sensitivity: "personal",         kind: "name",           category: "immigration" },
+  { key: "i94Number",            label: "I-94 Admission Number",       aliases: ["i94 number", "admission number"],                                sensitivity: "highly_sensitive", kind: "id_unique",      category: "immigration" },
+  { key: "i94ExpiryDate",        label: "I-94 Expiry Date",            aliases: ["i94 expiry", "admit until", "authorized stay until"],            sensitivity: "personal",         kind: "date_monotonic", category: "immigration" },
+  { key: "greenCardNumber",      label: "Green Card Number",           aliases: ["uscis number", "permanent resident card number"],                sensitivity: "highly_sensitive", kind: "id_unique",      category: "immigration" },
+  { key: "greenCardCategory",    label: "Green Card Category",         aliases: ["preference category", "immigration category"],                   sensitivity: "personal",         kind: "text",           category: "immigration" },
+  { key: "naturalizationDate",   label: "Naturalization Date",         aliases: ["citizenship date", "date of naturalization"],                    sensitivity: "personal",         kind: "date_static",    category: "immigration" },
+
+  // Civil status — relationships established by official documents
+  { key: "spouseName",           label: "Spouse's Full Name",          aliases: ["wife name", "husband name", "partner name"],                     sensitivity: "personal",         kind: "name",           category: "civil_status" },
+  { key: "spouseDateOfBirth",    label: "Spouse's Date of Birth",      aliases: ["spouse dob", "wife dob", "husband dob"],                         sensitivity: "personal",         kind: "date_static",    category: "civil_status" },
+  { key: "marriageDate",         label: "Marriage Date",               aliases: ["wedding date", "date of marriage", "married on"],                sensitivity: "personal",         kind: "date_static",    category: "civil_status" },
+  { key: "marriagePlace",        label: "Place of Marriage",           aliases: ["wedding location", "marriage location"],                          sensitivity: "personal",         kind: "text",           category: "civil_status" },
+  { key: "marriageCertificateNumber", label: "Marriage Certificate Number", aliases: ["marriage record number", "certificate number"],            sensitivity: "personal",         kind: "id_unique",      category: "civil_status" },
+  { key: "fatherName",           label: "Father's Full Name",          aliases: ["dad name", "father", "parent 1"],                                sensitivity: "personal",         kind: "name",           category: "civil_status" },
+  { key: "motherName",           label: "Mother's Full Name",          aliases: ["mom name", "mother", "parent 2", "maiden name"],                 sensitivity: "personal",         kind: "name",           category: "civil_status" },
 
   // Emergency
   { key: "emergencyContactName",  label: "Emergency Contact Name",  aliases: ["emergency contact"],       sensitivity: "personal", kind: "text",    category: "emergency" },
@@ -277,6 +321,50 @@ export const DOC_AUTHORITY: Partial<Record<DocType, Partial<Record<ProfileKey, n
   school_letter: { fullName: 0.7 },
   employment_letter: { fullName: 0.7, employerName: 1.0, jobTitle: 0.95, employmentStartDate: 0.9 },
   medical_record: { fullName: 0.6, dateOfBirth: 0.7 },
+  voe_letter: {
+    fullName: 0.9, employerName: 1.0, jobTitle: 0.95,
+    employmentStartDate: 1.0, employmentEndDate: 0.95, annualSalary: 0.95,
+  },
+
+  // Civil-status authority — these are the primary sources for these fields.
+  marriage_certificate: {
+    fullName: 0.9, spouseName: 1.0, spouseDateOfBirth: 0.9,
+    marriageDate: 1.0, marriagePlace: 1.0, marriageCertificateNumber: 1.0,
+  },
+  marriage_license: {
+    fullName: 0.85, spouseName: 0.95,
+    marriageDate: 0.9, marriagePlace: 0.95, marriageCertificateNumber: 0.95,
+  },
+  divorce_decree: { fullName: 0.9, spouseName: 0.9 },
+  birth_certificate: {
+    fullName: 1.0, firstName: 1.0, middleName: 1.0, lastName: 1.0,
+    dateOfBirth: 1.0, placeOfBirth: 1.0, gender: 1.0,
+    fatherName: 1.0, motherName: 1.0,
+  },
+  adoption_record: { fullName: 0.9, fatherName: 1.0, motherName: 1.0 },
+  death_certificate: { fullName: 1.0, dateOfBirth: 0.9 },
+  court_order: { fullName: 0.7 },
+
+  // Immigration authority
+  i797_approval_notice: {
+    visaBeneficiary: 1.0, visaType: 1.0, visaReceiptNumber: 1.0,
+    visaValidFrom: 1.0, visaValidUntil: 1.0, visaPetitioner: 1.0,
+    employerName: 0.9,
+  },
+  visa_stamp: { visaType: 0.9, visaValidFrom: 0.9, visaValidUntil: 0.9 },
+  green_card: {
+    fullName: 0.95, dateOfBirth: 0.9, nationality: 0.9,
+    greenCardNumber: 1.0, greenCardCategory: 1.0,
+  },
+  naturalization_certificate: {
+    fullName: 1.0, dateOfBirth: 0.9, naturalizationDate: 1.0, nationality: 0.95,
+  },
+  i94_record: {
+    visaType: 0.8, i94Number: 1.0, i94ExpiryDate: 1.0,
+  },
+  ead_card: {
+    fullName: 0.9, dateOfBirth: 0.9, visaType: 0.7, visaValidFrom: 0.8, visaValidUntil: 1.0,
+  },
 };
 
 export function authorityFor(doc: DocType, key: ProfileKey): number {

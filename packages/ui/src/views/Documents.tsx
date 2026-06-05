@@ -173,7 +173,7 @@ export function Documents() {
       }
 
       updateJob(id, { state: "extracting", progress: 0.5, message: "Extracting fields" });
-      const { docType, candidates, education, experience, entityName, relationshipHint, sanitization, review } =
+      const { docType, candidates, extras, education, experience, entityName, relationshipHint, sanitization, review } =
         await host.extractFromText(docId, text);
       const cleanups: string[] = [];
       if (sanitization?.dropped) cleanups.push(`${sanitization.dropped} dropped`);
@@ -245,6 +245,18 @@ export function Documents() {
           embeddings.push({
             id: crypto.randomUUID(), kind: "fact",
             entityId: c.entityId, documentId: doc.id, fieldKey: c.fieldKey, page: c.source.page,
+            text: t, vector: await host.embed(t),
+          });
+        }
+        // Embed long-tail "extras" the same way as typed facts so they
+        // surface in chat / Spotlight retrieval. fieldKey is omitted
+        // (they're not in the PROFILE_FIELDS list); the LLM-given
+        // label drives both the embedding and the citation display.
+        for (const ex of extras) {
+          const t = `${ex.label}: ${ex.value}`;
+          embeddings.push({
+            id: crypto.randomUUID(), kind: "fact",
+            entityId: entity.id, documentId: doc.id, page: ex.source.page,
             text: t, vector: await host.embed(t),
           });
         }
