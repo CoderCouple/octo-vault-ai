@@ -198,7 +198,7 @@ Return JSON:
     // Right now extras + inferredRelationships come back empty from
     // the desktop renderer because this duplicated extractor doesn't
     // ask the LLM for them.
-    return { docType, entityName, relationshipHint, candidates, extras: [], inferredRelationships: [], education, experience };
+    return { docType, entityName, relationshipHint, candidates, extras: [], inferredRelationships: [], inferredEvents: [], education, experience };
   },
   async embed(text): Promise<number[]> {
     const c = await cfg();

@@ -82,6 +82,21 @@ CREATE TABLE IF NOT EXISTS relationships (
 CREATE INDEX IF NOT EXISTS rel_from ON relationships(from_entity);
 CREATE INDEX IF NOT EXISTS rel_to   ON relationships(to_entity);
 
+-- Phase 4b: events — multi-entity dated facts. Participant entity IDs
+-- live inside the JSON data blob; we still index by document_id for
+-- doc-deletion cleanup. Searching by participant requires JSON queries
+-- which is fine for the low row counts in a personal vault.
+CREATE TABLE IF NOT EXISTS events (
+  id          TEXT PRIMARY KEY,
+  type        TEXT NOT NULL,
+  date        TEXT,
+  end_date    TEXT,
+  document_id TEXT,
+  data        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_doc  ON events(document_id);
+CREATE INDEX IF NOT EXISTS events_type ON events(type);
+
 CREATE TABLE IF NOT EXISTS settings (
   key          TEXT PRIMARY KEY,
   value        TEXT NOT NULL
@@ -310,6 +325,7 @@ export const store = {
     d.prepare("DELETE FROM education_records WHERE document_id = ?").run(documentId);
     d.prepare("DELETE FROM experience_records WHERE document_id = ?").run(documentId);
     d.prepare("DELETE FROM relationships WHERE document_id = ?").run(documentId);
+    d.prepare("DELETE FROM events WHERE document_id = ?").run(documentId);
   },
 
   // Relationships
@@ -330,6 +346,29 @@ export const store = {
   },
   deleteRelationship(id: string) {
     requireDb().prepare("DELETE FROM relationships WHERE id = ?").run(id);
+  },
+
+  // Events (Phase 4b)
+  listEvents() {
+    return requireDb().prepare("SELECT data FROM events").all()
+      .map((r) => JSON.parse((r as { data: string }).data));
+  },
+  saveEvent(event: {
+    id: string; type: string; date?: string; endDate?: string;
+    source?: { documentId?: string };
+  }) {
+    const json = JSON.stringify({ ...event, updatedAt: Date.now() });
+    requireDb().prepare(
+      "INSERT INTO events(id, type, date, end_date, document_id, data) VALUES (?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET type = excluded.type, date = excluded.date, " +
+      "end_date = excluded.end_date, document_id = excluded.document_id, data = excluded.data"
+    ).run(event.id, event.type, event.date ?? null, event.endDate ?? null, event.source?.documentId ?? null, json);
+  },
+  deleteEvent(id: string) {
+    requireDb().prepare("DELETE FROM events WHERE id = ?").run(id);
+  },
+  deleteEventsFromDoc(documentId: string) {
+    requireDb().prepare("DELETE FROM events WHERE document_id = ?").run(documentId);
   },
 
   // Settings (stored under a fixed "settings" key)

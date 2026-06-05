@@ -1,0 +1,53 @@
+# Golden test set for the QA pipeline.
+#
+# Each case describes a question and the *minimum* set of facts that
+# a correct answer would have cited. Cases are intentionally focused
+# on the failure modes that motivated Phases 1–5:
+#
+#   - alias / abbreviation gap (Phase 5)
+#   - single-doc dominance     (Phase 3 — RRF + BM25)
+#   - civil-status closure     (Phase 4a + 4b)
+#   - long-tail "extras"        (Phase 2)
+#
+# A case PASSES if every expected fieldKey appears in the top-K
+# retrieved citations for that case's entityId. Add new cases over
+# time; the eval is meant to grow into a regression bar, not a
+# single pass/fail gate.
+
+cases:
+  - id: i797-expiry-by-alias
+    question: when does my I-797 expire?
+    entity: self
+    expect_field_keys: [visaValidUntil]
+    notes: Phase 5 — "I-797 expiry" should hit visaValidUntil via aliases
+           rather than the passport doc.
+
+  - id: i797-expiry-paraphrase
+    question: how long is my H1B valid for?
+    entity: self
+    expect_field_keys: [visaValidUntil, visaValidFrom]
+
+  - id: passport-expiry
+    question: when does my passport expire?
+    entity: self
+    expect_field_keys: [passportExpiryDate]
+
+  - id: spouse-name
+    question: who is my spouse?
+    entity: self
+    expect_field_keys: [spouseName]
+
+  - id: marriage-date
+    question: when did we get married?
+    entity: self
+    expect_field_keys: [marriageDate]
+
+  - id: parents
+    question: who are my parents?
+    entity: self
+    expect_field_keys: [fatherName, motherName]
+
+  - id: address
+    question: what's my current address?
+    entity: self
+    expect_field_keys: [addressLine1, city, postalCode]

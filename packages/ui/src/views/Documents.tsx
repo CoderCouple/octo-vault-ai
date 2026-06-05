@@ -173,7 +173,7 @@ export function Documents() {
       }
 
       updateJob(id, { state: "extracting", progress: 0.5, message: "Extracting fields" });
-      const { docType, candidates, extras, inferredRelationships, education, experience, entityName, relationshipHint, sanitization, review } =
+      const { docType, candidates, extras, inferredRelationships, inferredEvents, education, experience, entityName, relationshipHint, sanitization, review } =
         await host.extractFromText(docId, text);
       const cleanups: string[] = [];
       if (sanitization?.dropped) cleanups.push(`${sanitization.dropped} dropped`);
@@ -261,6 +261,39 @@ export function Documents() {
           });
         } catch (e) {
           console.warn(`[ingest] failed to auto-emit ${ir.kind} relationship for "${ir.otherName}":`, e);
+        }
+      }
+
+      // Phase 4b — first-class Event rows. Resolve each participant
+      // name to an entity (creating if needed) and save one Event per
+      // inference. Closure rules in derive.ts read these to expand the
+      // graph (e.g., shared marriage → in-laws).
+      for (const ie of inferredEvents) {
+        try {
+          const resolved = [];
+          for (const p of ie.participants) {
+            const ent = p.role === "subject"
+              ? entity
+              : await resolveEntityFromName(p.name, p.role === "spouse" ? "spouse" : p.role === "parent" ? "parent" : undefined);
+            resolved.push({ entityId: ent.id, role: p.role });
+          }
+          // Skip if we don't have at least one resolved participant.
+          if (!resolved.length) continue;
+          const now = Date.now();
+          await storage.saveEvent({
+            id: crypto.randomUUID(),
+            type: ie.type,
+            participants: resolved,
+            date: ie.date,
+            endDate: ie.endDate,
+            place: ie.place,
+            attributes: ie.attributes ?? {},
+            source: { documentId: doc.id, excerpt: ie.excerpt },
+            createdAt: now,
+            updatedAt: now,
+          });
+        } catch (e) {
+          console.warn(`[ingest] failed to emit ${ie.type} event:`, e);
         }
       }
 

@@ -98,6 +98,14 @@ export interface StorageAdapter {
   saveRelationship(rel: import("./schema").RelationshipEdge): Promise<void>;
   deleteRelationship(id: string): Promise<void>;
 
+  // Events (Phase 4b) — multi-entity, dated facts. Marriage, birth,
+  // adoption, divorce, naturalization, etc. First-class so derive
+  // closure rules can walk them.
+  listEvents(): Promise<import("./schema").Event[]>;
+  saveEvent(event: import("./schema").Event): Promise<void>;
+  deleteEvent(id: string): Promise<void>;
+  deleteEventsFromDoc(documentId: string): Promise<void>;
+
   // Documents
   saveDocument(doc: StoredDocument): Promise<void>;
   listDocuments(): Promise<StoredDocument[]>;

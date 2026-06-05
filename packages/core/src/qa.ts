@@ -277,21 +277,36 @@ Alternative phrasings:`;
   }
 }
 
-// Build an in-memory BM25 index over the embedding pool's text. Tiny
-// (~9 KB lib + low-thousands of docs) so we rebuild on every ask;
-// keeps the code simple and avoids cache-invalidation bugs.
-function buildBm25(pool: EmbeddingRecord[]): MiniSearch<EmbeddingRecord> {
-  const ms = new MiniSearch<EmbeddingRecord>({
-    fields: ["text"],
+// Phase 5 — alias-aware BM25.
+// We index two fields per record:
+//   - text   : the original sentence/snippet (full weight)
+//   - aliases: the curated synonyms for that record's fieldKey, plus
+//              the human label. Lower weight so direct hits still win.
+// Why: "I-797 expiry" → user types "h1b end date" → vector hits the
+// passport doc instead. Aliases close that gap deterministically
+// without needing the LLM to rewrite the query.
+const ALIAS_INDEX: Map<string, string> = new Map(
+  PROFILE_FIELDS.map((f) => [f.key, [f.label, ...f.aliases].join(" ")]),
+);
+
+interface IndexedRecord extends EmbeddingRecord { aliases: string; }
+
+function buildBm25(pool: EmbeddingRecord[]): MiniSearch<IndexedRecord> {
+  const ms = new MiniSearch<IndexedRecord>({
+    fields: ["text", "aliases"],
     storeFields: ["id"],
     idField: "id",
     searchOptions: {
-      boost: { text: 1 },
+      boost: { text: 1, aliases: 0.6 },
       fuzzy: 0.2,        // small fuzziness handles typos + plural forms
       prefix: true,      // "expir" matches "expiration"
     },
   });
-  ms.addAll(pool);
+  const enriched: IndexedRecord[] = pool.map((r) => ({
+    ...r,
+    aliases: r.fieldKey ? (ALIAS_INDEX.get(r.fieldKey) ?? "") : "",
+  }));
+  ms.addAll(enriched);
   return ms;
 }
 

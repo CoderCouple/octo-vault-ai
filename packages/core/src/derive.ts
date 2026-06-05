@@ -16,7 +16,7 @@
 // them as "derived" so the user knows they weren't extracted directly.
 
 import { canonicalValue } from "./resolver";
-import type { Entity, Relationship, VaultProfile } from "./schema";
+import type { Entity, Event, Relationship, VaultProfile } from "./schema";
 
 export type DerivedKind =
   | "age"
@@ -26,7 +26,9 @@ export type DerivedKind =
   | "sibling-in-law"     // spouse's sibling
   | "grandparent"        // parent's parent
   | "same-address"       // two entities share a current address
-  | "same-employer";     // two entities share a current employer
+  | "same-employer"      // two entities share a current employer
+  | "shared-event"       // two entities both participated in the same event
+  | "event-anniversary"; // bi-temporal fact about an event subject
 
 export interface DerivedFact {
   id: string;             // stable: kind|subject|object|...
@@ -46,6 +48,9 @@ export interface DerivedFact {
 interface ProfileLookup {
   entities: Entity[];
   vault: VaultProfile;
+  // Optional — when provided, deriveFacts will also emit closure facts
+  // over the event graph (shared marriage → co-participant edge, etc.).
+  events?: Event[];
 }
 
 /** Field lookup helper: canonical value of a key for an entity, or null. */
@@ -90,7 +95,7 @@ function yearsBetween(a: Date, b: Date): number {
   return years;
 }
 
-export function deriveFacts({ entities, vault }: ProfileLookup, now: Date = new Date()): DerivedFact[] {
+export function deriveFacts({ entities, vault, events }: ProfileLookup, now: Date = new Date()): DerivedFact[] {
   const out: DerivedFact[] = [];
   const id = (parts: string[]) => parts.filter(Boolean).join("|");
 
@@ -246,6 +251,59 @@ export function deriveFacts({ entities, vault }: ProfileLookup, now: Date = new 
         ],
         confidence: "high",
       });
+    }
+  }
+
+  // --- 8. Event closure -----------------------------------------------------
+  // Phase 4b — when two entities are participants in the same event,
+  // emit a "shared-event" derived edge. Marriages, births and adoptions
+  // are the most useful sources: they connect spouses, parents, and
+  // children even when one side hasn't been entered as a Relationship.
+  // Also emit "event-anniversary" age-style facts so the chat can
+  // answer "how long have they been married?".
+  if (events?.length) {
+    const entitySet = new Set(entities.map((e) => e.id));
+    for (const ev of events) {
+      const present = ev.participants.filter((p) => entitySet.has(p.entityId));
+      if (present.length < 2) {
+        // Solo event — still useful for anniversary closure below.
+      } else {
+        for (let i = 0; i < present.length; i++) {
+          for (let j = i + 1; j < present.length; j++) {
+            const a = present[i], b = present[j];
+            out.push({
+              id: id(["shared-event", ev.id, a.entityId, b.entityId]),
+              kind: "shared-event",
+              subject: a.entityId,
+              object: b.entityId,
+              description: `${nameOf(a.entityId)} and ${nameOf(b.entityId)} share a ${ev.type} event${ev.date ? ` (${ev.date})` : ""}.`,
+              derivedFrom: [{ documentId: ev.source.documentId }],
+              confidence: "high",
+            });
+          }
+        }
+      }
+      // Anniversary closure: years since event date for the subject.
+      if (ev.date) {
+        const d = parseDateLoose(ev.date);
+        if (d) {
+          const years = yearsBetween(d, now);
+          if (years >= 0 && years < 200) {
+            const subj = ev.participants.find((p) => p.role === "subject") ?? ev.participants[0];
+            if (subj && entitySet.has(subj.entityId)) {
+              out.push({
+                id: id(["event-anniversary", ev.id, subj.entityId]),
+                kind: "event-anniversary",
+                subject: subj.entityId,
+                value: String(years),
+                description: `${nameOf(subj.entityId)}'s ${ev.type} was ${years} year${years === 1 ? "" : "s"} ago.`,
+                derivedFrom: [{ documentId: ev.source.documentId }],
+                confidence: "high",
+              });
+            }
+          }
+        }
+      }
     }
   }
 

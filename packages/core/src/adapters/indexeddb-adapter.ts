@@ -7,7 +7,7 @@ import { get, set, del, keys, createStore, type UseStore } from "idb-keyval";
 import { DEFAULT_SETTINGS } from "../storage";
 import type { Settings, StorageAdapter, StoredDocument } from "../storage";
 import type {
-  EducationRecord, Entity, ExperienceRecord, FieldRecord,
+  EducationRecord, Entity, Event, ExperienceRecord, FieldRecord,
   Profile, ProfileKey, RelationshipEdge, VaultProfile,
 } from "../schema";
 import type { EmbeddingRecord } from "../qa";
@@ -20,6 +20,7 @@ const embedStore = createStore("octovault-embeddings", "vectors");
 const eduStore = createStore("octovault-education", "records");
 const expStore = createStore("octovault-experience", "records");
 const relStore = createStore("octovault-relationships", "edges");
+const eventStore = createStore("octovault-events", "events");
 const settingsStore = createStore("octovault-settings", "kv");
 const authStore = createStore("octovault-auth", "kv");
 
@@ -93,7 +94,7 @@ export const indexedDbAdapter: StorageAdapter = {
   async deleteExperience(id) { await del(id, expStore); },
 
   async deleteRecordsFromDoc(documentId) {
-    for (const store of [eduStore, expStore, relStore]) {
+    for (const store of [eduStore, expStore, relStore, eventStore]) {
       const ids = (await keys(store)) as string[];
       for (const id of ids) {
         const r = await getValue<{ source?: { documentId?: string } }>(store, id);
@@ -113,6 +114,26 @@ export const indexedDbAdapter: StorageAdapter = {
   },
   async deleteRelationship(id) {
     await del(id, relStore);
+  },
+
+  // --- Events ---
+  async listEvents() {
+    const ids = (await keys(eventStore)) as string[];
+    const recs = await Promise.all(ids.map((k) => getValue<Event>(eventStore, k)));
+    return recs.filter((r): r is Event => !!r);
+  },
+  async saveEvent(event) {
+    await putValue(eventStore, event.id, { ...event, updatedAt: Date.now() });
+  },
+  async deleteEvent(id) {
+    await del(id, eventStore);
+  },
+  async deleteEventsFromDoc(documentId: string) {
+    const ids = (await keys(eventStore)) as string[];
+    for (const id of ids) {
+      const e = await getValue<Event>(eventStore, id);
+      if (e?.source?.documentId === documentId) await del(id, eventStore);
+    }
   },
 
   async deleteEntity(id) {

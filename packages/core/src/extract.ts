@@ -10,6 +10,7 @@ import {
   PROFILE_FIELDS,
   type DocType,
   type EducationRecord,
+  type EventType,
   type ExperienceRecord,
   type FieldCandidate,
   type ProfileKey,
@@ -229,6 +230,24 @@ export interface InferredRelationship {
   excerpt?: string;
 }
 
+// Name-based event suggestion. Same resolution pattern as
+// InferredRelationship — Documents.tsx resolves participant names
+// to entity ids before saving an Event row.
+export interface InferredEventParticipant {
+  name: string;
+  role: "subject" | "spouse" | "parent" | "child" | "officiant" | "witness" | "other";
+}
+export interface InferredEvent {
+  type: EventType;
+  participants: InferredEventParticipant[];
+  date?: string;
+  endDate?: string;
+  place?: string;
+  attributes?: Record<string, string>;
+  sourceDocId: string;
+  excerpt?: string;
+}
+
 interface ExtractionResponse {
   docType: DocType;
   entityName: string | null;
@@ -254,6 +273,10 @@ export interface ExtractionResult {
   // emits a spouse edge between the primary subject and the named
   // spouse. Name-based; caller resolves to entity ids and saves.
   inferredRelationships: InferredRelationship[];
+  // First-class events the doc describes — marriages, births, deaths,
+  // naturalizations, etc. Participants are name-based; the caller
+  // resolves to entity ids and saves Event rows.
+  inferredEvents: InferredEvent[];
   education: Omit<EducationRecord, "entityId">[];
   experience: Omit<ExperienceRecord, "entityId">[];
   // What sanitization did to the raw LLM output. Useful for the
@@ -482,6 +505,100 @@ Rules:
     pushRel("motherName", "parent");
   }
 
+  // Phase 4b — emit first-class Event nodes for civil-status / status-
+  // change documents. Same pattern as inferredRelationships: name-based,
+  // resolved + saved by the caller.
+  const inferredEvents: InferredEvent[] = [];
+  function pushEvent(_type: EventType, build: () => InferredEvent | null) {
+    const e = build();
+    if (e) inferredEvents.push(e);
+  }
+  const subjectName = finalEntityName?.trim();
+  const spouseN = fieldValue("spouseName")?.trim();
+  const fatherN = fieldValue("fatherName")?.trim();
+  const motherN = fieldValue("motherName")?.trim();
+  const marriageDate = fieldValue("marriageDate")?.trim();
+  const marriagePlace = fieldValue("marriagePlace")?.trim();
+  const dateOfBirth = fieldValue("dateOfBirth")?.trim();
+  const placeOfBirth = fieldValue("placeOfBirth")?.trim();
+  const naturalizationDate = fieldValue("naturalizationDate")?.trim();
+
+  if (docType === "marriage_certificate" || docType === "marriage_license") {
+    pushEvent("marriage", () => {
+      if (!subjectName) return null;
+      const participants: InferredEventParticipant[] = [{ name: subjectName, role: "subject" }];
+      if (spouseN) participants.push({ name: spouseN, role: "spouse" });
+      return {
+        type: "marriage",
+        participants,
+        date: marriageDate,
+        place: marriagePlace,
+        sourceDocId: documentId,
+      };
+    });
+  }
+  if (docType === "divorce_decree") {
+    pushEvent("divorce", () => {
+      if (!subjectName) return null;
+      const participants: InferredEventParticipant[] = [{ name: subjectName, role: "subject" }];
+      if (spouseN) participants.push({ name: spouseN, role: "spouse" });
+      return {
+        type: "divorce",
+        participants,
+        sourceDocId: documentId,
+      };
+    });
+  }
+  if (docType === "birth_certificate") {
+    pushEvent("birth", () => {
+      if (!subjectName) return null;
+      const participants: InferredEventParticipant[] = [{ name: subjectName, role: "subject" }];
+      if (fatherN) participants.push({ name: fatherN, role: "parent" });
+      if (motherN) participants.push({ name: motherN, role: "parent" });
+      return {
+        type: "birth",
+        participants,
+        date: dateOfBirth,
+        place: placeOfBirth,
+        sourceDocId: documentId,
+      };
+    });
+  }
+  if (docType === "adoption_record") {
+    pushEvent("adoption", () => {
+      if (!subjectName) return null;
+      const participants: InferredEventParticipant[] = [{ name: subjectName, role: "subject" }];
+      if (fatherN) participants.push({ name: fatherN, role: "parent" });
+      if (motherN) participants.push({ name: motherN, role: "parent" });
+      return {
+        type: "adoption",
+        participants,
+        sourceDocId: documentId,
+      };
+    });
+  }
+  if (docType === "death_certificate") {
+    pushEvent("death", () => {
+      if (!subjectName) return null;
+      return {
+        type: "death",
+        participants: [{ name: subjectName, role: "subject" }],
+        sourceDocId: documentId,
+      };
+    });
+  }
+  if (docType === "naturalization_certificate") {
+    pushEvent("naturalization", () => {
+      if (!subjectName) return null;
+      return {
+        type: "naturalization",
+        participants: [{ name: subjectName, role: "subject" }],
+        date: naturalizationDate,
+        sourceDocId: documentId,
+      };
+    });
+  }
+
   return {
     docType,
     entityName: finalEntityName,
@@ -489,6 +606,7 @@ Rules:
     candidates: finalCandidates,
     extras,
     inferredRelationships,
+    inferredEvents,
     education, experience,
     sanitization: report,
     review: reviewSummary,

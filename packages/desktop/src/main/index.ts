@@ -523,6 +523,10 @@ ipcMain.handle("store.deleteRecordsFromDoc",    (_e, documentId) => whenOpen(() 
 ipcMain.handle("store.listRelationships",       () => whenOpen(() => vault.store.listRelationships(), [] as unknown[]));
 ipcMain.handle("store.saveRelationship",        (_e, rel) => whenOpen(() => vault.store.saveRelationship(rel), null));
 ipcMain.handle("store.deleteRelationship",      (_e, id) => whenOpen(() => vault.store.deleteRelationship(id), null));
+ipcMain.handle("store.listEvents",              () => whenOpen(() => vault.store.listEvents(), [] as unknown[]));
+ipcMain.handle("store.saveEvent",               (_e, event) => whenOpen(() => vault.store.saveEvent(event), null));
+ipcMain.handle("store.deleteEvent",             (_e, id) => whenOpen(() => vault.store.deleteEvent(id), null));
+ipcMain.handle("store.deleteEventsFromDoc",     (_e, documentId) => whenOpen(() => vault.store.deleteEventsFromDoc(documentId), null));
 ipcMain.handle("store.getSettings",             () => whenOpen(() => vault.store.getSettings(), {}));
 ipcMain.handle("store.updateSettings",          (_e, patch) => whenOpen(() => vault.store.updateSettings(patch), patch ?? {}));
 ipcMain.handle("store.getAuthBlob",             () => whenOpen(() => vault.store.getAuthBlob(), null));

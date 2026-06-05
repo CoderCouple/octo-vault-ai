@@ -58,6 +58,13 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   async saveRelationship(_r) { throw new ReadOnlyError(); },
   async deleteRelationship(_id) { throw new ReadOnlyError(); },
 
+  // Events — same shape as relationships above. Bridge doesn't yet
+  // serve event rows; reads return empty and writes throw.
+  async listEvents() { return []; },
+  async saveEvent(_e) { throw new ReadOnlyError(); },
+  async deleteEvent(_id) { throw new ReadOnlyError(); },
+  async deleteEventsFromDoc(_documentId: string) { throw new ReadOnlyError(); },
+
   // Documents
   async listDocuments() { return get<StoredDocument[]>("/documents", []); },
   async getDocument(id) {

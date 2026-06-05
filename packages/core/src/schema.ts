@@ -163,6 +163,52 @@ export interface RelationshipEdge {
   updatedAt: number;
 }
 
+// ─── Events (Phase 4b) ───
+// First-class graph nodes for things that happen between people +
+// have a date. Distinct from RelationshipEdge (which is an edge, not
+// a node) and from FieldCandidate (which is a single fact about one
+// entity). An Event ties N entities + a date + a doc source.
+//
+// Why first-class: closure rules over multi-entity dated facts get
+// awkward when those facts are stored only as edges. "Find Sunil's
+// in-laws (= his wife's parents) using the marriage event from his
+// marriage cert + the parent edges on his wife's birth cert" reads
+// cleanly when marriage is a row, not just an edge.
+export type EventType =
+  | "marriage"
+  | "divorce"
+  | "birth"
+  | "adoption"
+  | "death"
+  | "naturalization"
+  | "court_order";
+
+export interface EventParticipant {
+  entityId: string;
+  role: "subject" | "spouse" | "parent" | "child" | "officiant" | "witness" | "other";
+}
+
+export interface Event {
+  id: string;
+  type: EventType;
+  participants: EventParticipant[];
+  // ISO date when the event happened (marriage date, birth date, etc.).
+  date?: string;
+  // For events that ended — e.g., a divorce decree sets endDate on
+  // the corresponding marriage event.
+  endDate?: string;
+  // Free-text place string ("Mumbai, India" or "San Mateo County
+  // Courthouse").
+  place?: string;
+  // Type-specific extras (officiant name, certificate number, court
+  // case ID, cause of death). Kept open-ended for the long tail.
+  attributes: Record<string, string>;
+  // Where this event came from.
+  source: { documentId: string; page?: number; excerpt?: string };
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Which kinds are symmetric by nature. */
 export const SYMMETRIC_RELATIONSHIPS: RelationshipKind[] = [
   "spouse", "partner", "sibling", "sibling-in-law", "co-parent", "colleague",
