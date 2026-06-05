@@ -55,6 +55,7 @@ const NAV = [
   { label: "Features",     href: "#features" },
   { label: "Verify",       href: "#verify" },
   { label: "FAQ",          href: "#faq" },
+  { label: "Report a Bug", href: "/bug-report" },
 ];
 
 function Nav() {

@@ -4,6 +4,10 @@
   "installCommand": "npm install --ignore-scripts",
   "buildCommand": "npm run build:landing",
   "outputDirectory": "packages/landing/dist",
+  "rewrites": [
+    { "source": "/bug-report", "destination": "/index.html" },
+    { "source": "/bug-report/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
