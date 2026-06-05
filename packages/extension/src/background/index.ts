@@ -3,9 +3,10 @@
 // content script.
 
 import {
+  enrichDetection,
   generate, generateJson, isReachable, indexedDbAdapter,
   matchFormFields,
-  type Entity, type OllamaConfig, type VaultProfile,
+  type DetectedField, type Entity, type OllamaConfig, type SuspiciousCandidate, type VaultProfile,
 } from "@octovault/core";
 import { bridgeReachable, fetchProfileFromBridge } from "../bridge";
 
@@ -66,19 +67,50 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
         : generate(await cfg(), { prompt: msg.prompt as string, system: msg.system as string | undefined });
 
     case "form.match": {
-      // Multi-entity matching (Phase C). We pass the full vault +
-      // entities to the matcher so fields under a "Spouse" or
-      // "Emergency Contact" section route to the right entity.
-      // Response includes the vault so the content script can resolve
-      // value = vault[match.entityId][match.profileKey] at fill time.
+      // Multi-entity matching (Phase C) + LLM-text augmentation (Phase E1).
+      // Order: enrich → merge → match.
       const remote = await fetchProfileFromBridge() as VaultProfile | null;
       const vault: VaultProfile = remote && Object.keys(remote).length > 0
         ? remote
         : await indexedDbAdapter.getAllProfiles();
       const entities = await fetchEntities();
       const source = remote ? "desktop" : "extension";
-      const matches = await matchFormFields(await cfg(), msg.fields as never, vault, entities);
-      return { matches, vault, entities, source };
+      const llm = await cfg();
+
+      const rawFields = (msg.fields as DetectedField[] | undefined) ?? [];
+      const candidates = (msg.candidates as SuspiciousCandidate[] | undefined) ?? [];
+
+      // Phase E1: ask the LLM to correct weak labels and decide which
+      // suspicious candidates are real fields. Skipped (cheaply, in
+      // the helper) when nothing needs correcting.
+      const enrichment = await enrichDetection(llm, rawFields, candidates);
+
+      // Merge: apply label corrections, then append promoted candidates
+      // as full DetectedField rows. Promoted fields get an empty name /
+      // autocomplete since DOM detection didn't reach them — the LLM's
+      // label + chosen type are all we have, and that's enough for
+      // matching.
+      const fields: DetectedField[] = rawFields.map((f) => {
+        const c = enrichment.corrections[f.id];
+        return c?.label ? { ...f, label: c.label } : f;
+      });
+      for (const p of enrichment.promotions) {
+        fields.push({
+          id: p.id,
+          label: p.label,
+          name: "",
+          type: p.type,
+          placeholder: "",
+          autocomplete: "",
+          section: p.section,
+        });
+      }
+
+      const matches = await matchFormFields(llm, fields, vault, entities);
+      // Return the *final* fields so the content script can show the
+      // enriched labels in the HUD and so it knows which ids were
+      // promoted (anything not in rawFields' id set is a promotion).
+      return { matches, vault, entities, source, fields, enrichment };
     }
 
     case "bridge.health":

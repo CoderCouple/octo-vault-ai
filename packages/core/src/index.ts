@@ -4,6 +4,7 @@ export * from "./resolver";
 export * from "./ollama";
 export * from "./extract";
 export * from "./match";
+export * from "./detect";
 export * from "./ocr";
 export * from "./pdf";
 export * from "./messages";

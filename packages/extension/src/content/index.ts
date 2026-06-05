@@ -102,6 +102,174 @@ function detectFields() {
   return out;
 }
 
+// Phase F1: composite-date detection.
+// Many government forms split a date into three <select> elements
+// (year / month / day) inside one fieldset, e.g.
+//   <fieldset><legend>When will you enter Canada?</legend>
+//     <select aria-label="Year">...</select>
+//     <select aria-label="Month">...</select>
+//     <select aria-label="Day">...</select>
+//   </fieldset>
+// detectFields() returns these as three separate select fields with
+// no useful type — matching skips them. This function looks for the
+// pattern after detection and emits a synthetic composite field that
+// the matcher can treat as one type=date input. The fill step
+// decomposes the value across the three parts.
+
+interface DateComposite {
+  syntheticId: string;            // e.g. "ov-comp-0"
+  field: DetectedField;           // what we send to the matcher
+  parts: { year: HTMLElement; month: HTMLElement; day: HTMLElement };
+}
+
+function labelOfPart(el: HTMLElement): string {
+  // Cheap probe — what does this look like? We check aria-label, name,
+  // and the visible option contents to classify a select as a year /
+  // month / day picker.
+  const aria = (el.getAttribute("aria-label") ?? "").toLowerCase();
+  const name = (el.getAttribute("name") ?? "").toLowerCase();
+  const label = findLabel(el).toLowerCase();
+  return `${aria} ${name} ${label}`.trim();
+}
+
+function classifyDatePart(el: HTMLElement): "year" | "month" | "day" | null {
+  const t = labelOfPart(el);
+  if (/\byear|yyyy|yy\b|\bann[eé]e\b|वर्ष/.test(t)) return "year";
+  if (/\bmonth|mm\b|mois|माह/.test(t)) return "month";
+  if (/\bday|dd\b|jour|दिन/.test(t)) return "day";
+  // Fall back to option-content heuristic for unlabelled selects:
+  // year options are 4-digit numbers; month options are 12 entries.
+  if (el instanceof HTMLSelectElement) {
+    const opts = Array.from(el.options).slice(1, 5).map((o) => o.textContent?.trim() ?? "");
+    if (opts.length && opts.every((o) => /^\d{4}$/.test(o))) return "year";
+    if (el.options.length >= 12 && el.options.length <= 13) {
+      // 12 months ± a "Select month" header.
+      if (opts.some((o) => /january|jan|february|feb|march|april/i.test(o))) return "month";
+    }
+    if (opts.length && opts.every((o) => /^\d{1,2}$/.test(o))) {
+      const max = Math.max(...Array.from(el.options).map((o) => parseInt(o.textContent ?? "0", 10)));
+      if (max <= 31) return "day";
+    }
+  }
+  return null;
+}
+
+function detectDateComposites(detected: { el: Fillable; field: DetectedField }[]): DateComposite[] {
+  // Group detected fields by their section label. Then within each
+  // group, look for a {year, month, day} triple.
+  const bySection = new Map<string, { el: HTMLElement; field: DetectedField; part: "year" | "month" | "day" }[]>();
+  for (const d of detected) {
+    if (!(d.el instanceof HTMLSelectElement)) continue;
+    const part = classifyDatePart(d.el as HTMLElement);
+    if (!part) continue;
+    const sec = d.field.section ?? "";
+    const arr = bySection.get(sec) ?? [];
+    arr.push({ el: d.el as HTMLElement, field: d.field, part });
+    bySection.set(sec, arr);
+  }
+  const composites: DateComposite[] = [];
+  let i = 0;
+  for (const [sec, parts] of bySection) {
+    const year = parts.find((p) => p.part === "year")?.el;
+    const month = parts.find((p) => p.part === "month")?.el;
+    const day = parts.find((p) => p.part === "day")?.el;
+    if (!year || !month || !day) continue;
+    const syntheticId = `ov-comp-${i++}`;
+    composites.push({
+      syntheticId,
+      field: {
+        id: syntheticId,
+        type: "date",
+        label: sec || "Date",
+        name: "",
+        placeholder: "",
+        autocomplete: "",
+        section: sec || undefined,
+      },
+      parts: { year, month, day },
+    });
+  }
+  return composites;
+}
+
+// Fill a composite date by writing each part. Returns true if all
+// parts wrote successfully. Year/Day are numeric strings; Month
+// handles two formats: numeric (1, 2, ..., 12) or named (january,
+// february, ...) — we try the numeric value first, then walk the
+// options to find a matching text/value.
+function fillDateComposite(parts: DateComposite["parts"], iso: string): boolean {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const [, yyyy, mm, dd] = m;
+  const setSelectByText = (el: HTMLElement, candidates: string[]): boolean => {
+    if (!(el instanceof HTMLSelectElement)) return false;
+    for (const cand of candidates) {
+      const found = Array.from(el.options).find((o) =>
+        o.value === cand || (o.textContent?.trim().toLowerCase() === cand.toLowerCase()),
+      );
+      if (found) {
+        el.value = found.value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }
+    }
+    return false;
+  };
+  const monthNamesLong = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+  const monthNamesShort = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  const monthIdx = parseInt(mm, 10) - 1;
+  const dayInt = parseInt(dd, 10);
+  const yearOk = setSelectByText(parts.year, [yyyy]);
+  const monthOk = setSelectByText(parts.month, [mm, String(parseInt(mm, 10)), monthNamesLong[monthIdx] ?? "", monthNamesShort[monthIdx] ?? ""]);
+  const dayOk = setSelectByText(parts.day, [dd, String(dayInt)]);
+  return yearOk && monthOk && dayOk;
+}
+
+// Phase E1: suspicious candidates. Elements that LOOK form-like but
+// didn't make it through detectFields(). The LLM augmentation pass
+// decides which are real fields. We bias toward including too few
+// rather than too many — the LLM call is cheap, but each promotion
+// fans out to a fill attempt.
+function detectSuspicious(detectedEls: Set<HTMLElement>): { el: HTMLElement; cand: import("@octovault/core").SuspiciousCandidate }[] {
+  const out: { el: HTMLElement; cand: import("@octovault/core").SuspiciousCandidate }[] = [];
+  let i = 0;
+
+  // (a) labelled containers that don't contain any detected input.
+  // Things like <div role="textbox" aria-labelledby="..."> with no
+  // child input — most often custom widgets.
+  const labelled = document.querySelectorAll<HTMLElement>("[aria-labelledby], [aria-label]");
+  for (const el of labelled) {
+    if (detectedEls.has(el)) continue;
+    // Skip if any descendant is a real form control we already detected.
+    let hasDetectedChild = false;
+    for (const ch of el.querySelectorAll<HTMLElement>("input, select, textarea")) {
+      if (detectedEls.has(ch)) { hasDetectedChild = true; break; }
+    }
+    if (hasDetectedChild) continue;
+    const text = (el.textContent ?? "").trim();
+    if (text.length === 0 || text.length > 200) continue;
+    if (isHidden(el)) continue;
+    // Buttons / links / headings are NOT fields.
+    const tag = el.tagName.toLowerCase();
+    if (["button", "a", "h1", "h2", "h3", "h4", "h5", "h6", "label", "fieldset", "legend"].includes(tag)) continue;
+
+    const id = `ov-cand-${i++}`;
+    el.setAttribute(FIELD_ATTR, id);
+    out.push({
+      el,
+      cand: {
+        id, tag,
+        text,
+        section: findSection(el),
+        reason: "labelled container, no input child",
+      },
+    });
+    if (out.length >= 12) break; // cap to keep prompt size reasonable
+  }
+  return out;
+}
+
 // Resolution order (most specific first):
 //   1. aria-labelledby (multi-id; concat referenced elements' text)
 //   2. <label for="id">
@@ -240,14 +408,44 @@ interface FillReportRow {
 
 async function runFill() {
   const detected = detectFields();
-  if (detected.length === 0) { toast("No fillable fields detected on this view."); return; }
+  // Phase F1: collapse Y/M/D triples into a single synthetic date
+  // field BEFORE matching. We then strip the part fields from what
+  // we send to the matcher so it doesn't double-process them.
+  const composites = detectDateComposites(detected);
+  const compositePartEls = new Set<HTMLElement>();
+  for (const c of composites) {
+    compositePartEls.add(c.parts.year);
+    compositePartEls.add(c.parts.month);
+    compositePartEls.add(c.parts.day);
+  }
+  const detectedSansParts = detected.filter((d) => !compositePartEls.has(d.el as HTMLElement));
+
+  // Phase E1: also collect suspicious candidates. The background
+  // routes them through the LLM augmentation pass; the LLM may
+  // promote some to first-class fields with corrected labels.
+  const detectedSet = new Set(detectedSansParts.map((d) => d.el as HTMLElement));
+  const candidates = detectSuspicious(detectedSet);
+
+  if (detectedSansParts.length === 0 && composites.length === 0 && candidates.length === 0) {
+    toast("No fillable fields detected on this view.");
+    return;
+  }
   toast("Matching fields…");
+
+  // Composites flow alongside regular fields. The synthetic id is
+  // what the matcher sees; the fill step uses a side map to find
+  // the parts.
+  const compositeById = new Map(composites.map((c) => [c.syntheticId, c]));
 
   let resp: { ok: boolean; data?: unknown; error?: string } | undefined;
   try {
     resp = await chrome.runtime.sendMessage({
       type: "form.match",
-      fields: detected.map((d) => d.field),
+      fields: [
+        ...detectedSansParts.map((d) => d.field),
+        ...composites.map((c) => c.field),
+      ],
+      candidates: candidates.map((c) => c.cand),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -265,23 +463,52 @@ async function runFill() {
     vault: VaultProfile;
     entities: Entity[];
     source?: "desktop" | "extension";
+    fields: DetectedField[];        // post-enrichment; source of truth for labels
+    enrichment?: { corrections: Record<string, { label?: string }>; promotions: { id: string; label: string; type: string }[] };
   };
-  const { matches, vault, entities, source = "extension" } = data;
+  const { matches, vault, entities, source = "extension", fields: enrichedFields, enrichment } = data;
   const entityName = (eid: string) =>
     entities.find((e) => e.id === eid)?.name ?? (eid === "self" ? "Self" : eid);
   const totalProfileKeys = Object.values(vault).reduce((n, p) => n + Object.keys(p).length, 0);
 
+  // Promoted ids = those in enriched fields but not in either the
+  // original DOM detection or the synthetic composites we built.
+  const clientKnownIds = new Set([
+    ...detectedSansParts.map((d) => d.field.id),
+    ...composites.map((c) => c.syntheticId),
+  ]);
+  const promotedIds = new Set(
+    enrichedFields.filter((f) => !clientKnownIds.has(f.id)).map((f) => f.id),
+  );
+
+  // Element lookup. detect / detectSuspicious both set FIELD_ATTR,
+  // so a DOM query reaches whichever element the id refers to.
+  // Composite ids resolve through compositeById instead — there's no
+  // single DOM element for the whole composite.
+  function elFor(fieldId: string): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[${FIELD_ATTR}="${fieldId}"]`);
+  }
+
   const rows: FillReportRow[] = [];
   for (const m of matches) {
-    const target = detected.find((d) => d.field.id === m.fieldId);
-    const label = target?.field.label || target?.field.name || m.fieldId;
-    if (!target || !m.profileKey) {
-      rows.push({ fieldId: m.fieldId, label, status: "skipped", reason: "no profile key matched", entityName: entityName(m.entityId) });
-      continue;
-    }
-    const record = vault[m.entityId]?.[m.profileKey];
+    const field = enrichedFields.find((f) => f.id === m.fieldId);
+    const composite = compositeById.get(m.fieldId);
+    const label = field?.label || field?.name || m.fieldId;
+    const promoted = promotedIds.has(m.fieldId);
+
+    // Resolve the value from the matched profile entry (or skip).
+    const record = field && m.profileKey ? vault[m.entityId]?.[m.profileKey] : undefined;
     const canonicalId = record?.canonicalId;
     const value = record?.candidates.find((c) => c.id === canonicalId)?.value;
+
+    if (!field || !m.profileKey) {
+      rows.push({
+        fieldId: m.fieldId, label, status: "skipped",
+        reason: promoted ? "LLM-promoted; no profile key matched" : "no profile key matched",
+        entityName: entityName(m.entityId),
+      });
+      continue;
+    }
     if (!value) {
       rows.push({
         fieldId: m.fieldId, label, status: "skipped",
@@ -290,24 +517,69 @@ async function runFill() {
       });
       continue;
     }
-    const wrote = setNativeValue(target.el, value);
+
+    // Phase F1: composite fill path — decompose date across Y/M/D parts.
+    if (composite) {
+      const ok = fillDateComposite(composite.parts, value);
+      if (!ok) {
+        rows.push({
+          fieldId: m.fieldId, label, status: "skipped",
+          reason: `composite date "${value}" couldn't be decomposed (one or more parts missing the option)`,
+          entityName: entityName(m.entityId), profileKey: m.profileKey, value,
+        });
+        continue;
+      }
+      // Visual confirm on all three parts.
+      for (const p of [composite.parts.year, composite.parts.month, composite.parts.day]) {
+        p.style.outline = m.conflicted ? "2px dashed currentColor" : "2px solid currentColor";
+        p.style.outlineOffset = "1px";
+        setTimeout(() => { p.style.outline = ""; p.style.outlineOffset = ""; }, 2500);
+      }
+      rows.push({
+        fieldId: m.fieldId, label, status: "filled",
+        reason: `${entityName(m.entityId)}.${m.profileKey} = ${value} → Y/M/D parts`,
+        entityName: entityName(m.entityId), profileKey: m.profileKey,
+        conflicted: m.conflicted, value,
+      });
+      continue;
+    }
+
+    // Single-field fill path (regular field or LLM-promoted candidate).
+    const el = elFor(m.fieldId);
+    if (!el) {
+      rows.push({
+        fieldId: m.fieldId, label, status: "skipped",
+        reason: "no DOM element found for this match",
+        entityName: entityName(m.entityId), profileKey: m.profileKey,
+      });
+      continue;
+    }
+    const wrote = setNativeValue(el, value);
     if (!wrote) {
       rows.push({
         fieldId: m.fieldId, label, status: "skipped",
-        reason: `"${value}" doesn't fit ${target.field.type} input`,
+        reason: `"${value}" doesn't fit ${field.type} input`,
         entityName: entityName(m.entityId), profileKey: m.profileKey, value,
       });
       continue;
     }
-    target.el.style.outline = m.conflicted ? "2px dashed currentColor" : "2px solid currentColor";
-    target.el.style.outlineOffset = "1px";
-    setTimeout(() => { target.el.style.outline = ""; target.el.style.outlineOffset = ""; }, 2500);
+    el.style.outline = m.conflicted ? "2px dashed currentColor" : "2px solid currentColor";
+    el.style.outlineOffset = "1px";
+    setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 2500);
     rows.push({
       fieldId: m.fieldId, label, status: "filled",
-      reason: `${entityName(m.entityId)}.${m.profileKey} = ${value}`,
+      reason: `${entityName(m.entityId)}.${m.profileKey} = ${value}${promoted ? " (LLM-promoted)" : ""}`,
       entityName: entityName(m.entityId), profileKey: m.profileKey,
-      conflicted: m.conflicted, value, hidden: target.field.hidden,
+      conflicted: m.conflicted, value, hidden: field.hidden,
     });
+  }
+  // Log how much the enrichment did.
+  if (enrichment) {
+    const ncorr = Object.keys(enrichment.corrections).length;
+    const npromo = enrichment.promotions.length;
+    if (ncorr || npromo) {
+      console.log(`[OctoVault] LLM enrichment: ${ncorr} label correction${ncorr === 1 ? "" : "s"}, ${npromo} candidate promotion${npromo === 1 ? "" : "s"}`);
+    }
   }
 
   const filled = rows.filter((r) => r.status === "filled").length;
