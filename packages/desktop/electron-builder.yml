@@ -53,14 +53,14 @@ mac:
   notarize: true
 
 dmg:
-  title: ${productName}
-  background: build/background.png
+  title: OctoVault AI
+  background: build/background.tiff
   # Window layout for the drag-to-Applications view. The background image
   # has labels positioned to align with these item slots — keep them in
   # sync if you re-design the background.
   window:
-    width: 540
-    height: 380
+    width: 900
+    height: 540
   contents:
     - x: 140
       y: 200

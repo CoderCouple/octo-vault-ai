@@ -10,16 +10,16 @@
 // even if their checks haven't passed yet — users can fix Ollama later
 // from Settings.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Check, ChevronLeft, ChevronRight, Download, FileText, Loader2, Lock,
+  Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, Loader2, Lock,
   MessageSquare, ShieldCheck, Sparkles, WifiOff,
 } from "lucide-react";
 import {
   addUserCandidate, hasModel, initialsFor, listModels, normalizeValue, SELF_ENTITY_ID,
   type Entity, type OllamaConfig,
 } from "@octovault/core";
-import { useAppContext } from "../context";
+import { useAppContext, type AppHost, type OllamaEnsureRunningResult } from "../context";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
@@ -176,7 +176,7 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
         {/* Carousel viewport */}
         <div className="relative min-h-[300px] overflow-hidden px-6">
           {step === "welcome"   && <WelcomeStep />}
-          {step === "ollama"    && <OllamaStep ok={ollamaOk} url={settings.ollamaUrl} />}
+          {step === "ollama"    && <OllamaStep ok={ollamaOk} url={settings.ollamaUrl} host={host} onReachable={() => setOllamaOk(true)} />}
           {step === "models"    && <ModelsStep ok={ollamaOk} llm={settings.llmModel} embed={settings.embeddingModel} llmInstalled={llmInstalled} embedInstalled={embedInstalled} />}
           {step === "you"       && <YouStep name={name} email={email} setName={setName} setEmail={setEmail} error={error} />}
           {step === "password"  && <PasswordStep pw1={pw1} pw2={pw2} setPw1={setPw1} setPw2={setPw2} error={error} />}
@@ -280,13 +280,50 @@ function WelcomeStep() {
   );
 }
 
-function OllamaStep({ ok, url }: { ok: boolean | null; url: string }) {
+function OllamaStep({
+  ok, url, host, onReachable,
+}: {
+  ok: boolean | null;
+  url: string;
+  host: AppHost;
+  onReachable: () => void;
+}) {
+  type FixState = "idle" | "working" | "done";
+  const [fixState, setFixState] = useState<FixState>("idle");
+  const [fixResult, setFixResult] = useState<OllamaEnsureRunningResult | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  // Track whether we were ever not-ok so that we don't flash the fix UI
+  // briefly on re-mounts when Ollama is already running.
+  const wasUnreachable = useRef(false);
+  if (ok === false) wasUnreachable.current = true;
+
+  async function handleFix() {
+    if (!host.ollamaEnsureRunning) return;
+    setFixState("working");
+    setFixResult(null);
+    try {
+      const result = await host.ollamaEnsureRunning();
+      setFixResult(result);
+      setFixState("done");
+      if (result.status === "running" || result.status === "started") {
+        onReachable();
+      }
+    } catch (e) {
+      setFixResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
+      setFixState("done");
+    }
+  }
+
+  const notInstalled = fixResult?.status === "not_installed";
+  const downloadUrl = notInstalled ? (fixResult as { status: "not_installed"; downloadUrl: string }).downloadUrl : "https://ollama.com/download";
+
   return (
     <div className="space-y-4 py-2">
       <p className={tx.body}>
         OctoVault uses <strong>Ollama</strong> running on your device to power
         extraction, form-matching, and chat. The app talks to it at <code>{url}</code>.
       </p>
+
       <div className={cn(
         "flex items-center gap-3 rounded-md border px-3 py-2.5",
         ok === true && "border-foreground"
@@ -303,10 +340,68 @@ function OllamaStep({ ok, url }: { ok: boolean | null; url: string }) {
           </div>
         </div>
       </div>
-      {ok !== true && (
-        <div className="space-y-2">
-          <div className={tx.microcap}>To install and start</div>
-          <code className="block whitespace-pre rounded bg-muted px-3 py-2 text-[11px]">
+
+      {ok !== true && wasUnreachable.current && host.ollamaEnsureRunning && (
+        <div className="space-y-3">
+          {fixState === "idle" && (
+            <Button size="sm" variant="outline" onClick={() => void handleFix()} className="w-full">
+              Fix automatically
+            </Button>
+          )}
+
+          {fixState === "working" && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Starting Ollama…
+            </div>
+          )}
+
+          {fixState === "done" && fixResult && (
+            <div className="space-y-2">
+              {(fixResult.status === "running" || fixResult.status === "started") && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Check className="h-3.5 w-3.5" /> Ollama started — re-checking…
+                </div>
+              )}
+              {notInstalled && (
+                <div className="space-y-2">
+                  <p className={tx.muted}>Ollama is not installed on this machine.</p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => window.open(downloadUrl, "_blank")}
+                    >
+                      <Download className="h-3.5 w-3.5" /> Download Ollama
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => void handleFix()}>
+                      Retry
+                    </Button>
+                  </div>
+                  <p className={tx.muted}>After installing, click Retry.</p>
+                </div>
+              )}
+              {fixResult.status === "error" && (
+                <div className="space-y-2">
+                  <p className="text-xs text-foreground">{(fixResult as { status: "error"; message: string }).message}</p>
+                  <Button size="sm" variant="outline" onClick={() => void handleFix()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setShowManual((v) => !v)}
+          >
+            <ChevronDown className={cn("h-3 w-3 transition-transform", showManual && "rotate-180")} />
+            Or do it manually
+          </button>
+
+          {showManual && (
+            <div className="space-y-2">
+              <code className="block whitespace-pre rounded bg-muted px-3 py-2 text-[11px]">
 {`# macOS
 brew install ollama
 brew services start ollama
@@ -314,10 +409,12 @@ brew services start ollama
 # Linux
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &`}
-          </code>
-          <p className={tx.muted}>
-            Or grab the installer from <span className="underline">ollama.com/download</span>.
-          </p>
+              </code>
+              <p className={tx.muted}>
+                Or grab the installer from <span className="underline">ollama.com/download</span>.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

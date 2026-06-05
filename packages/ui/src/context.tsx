@@ -19,10 +19,19 @@ export interface VaultSource {
   isAvailable?: () => Promise<boolean>;
 }
 
+export type OllamaEnsureRunningResult =
+  | { status: "running" }
+  | { status: "started" }
+  | { status: "not_installed"; downloadUrl: string }
+  | { status: "error"; message: string };
+
 export interface AppHost {
   storage: StorageAdapter;
   surface: "extension" | "desktop";
   isOllamaReachable(): Promise<boolean>;
+  // Optional: only the desktop surface can attempt to start the local
+  // Ollama process. The extension has no access to system binaries.
+  ollamaEnsureRunning?(): Promise<OllamaEnsureRunningResult>;
   extractFromText(documentId: string, text: string): Promise<ExtractionResult>;
   embed(text: string): Promise<number[]>;
   ask(question: string, opts?: AskOptions): Promise<QaResult>;

@@ -40,6 +40,8 @@ export function Landing() {
       <ChatSpotlight />         {/* #3 Chat with citations */}
       <ChromeExtensionSection />{/* #4 Chrome extension — dedicated section */}
       <SecuritySpotlight />     {/* #5 Local · private · secure */}
+      <HotkeySpotlight />       {/* #6 Global hotkey ⌘⌥O */}
+      <FloatingShortcutSpotlight /> {/* #7 Floating edge shortcut */}
       <Comparison />
       <Faq />
       <Cta />
@@ -1921,6 +1923,282 @@ function SecurityWidget() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Spotlight #6 — Global hotkey ⌘⌥O (interactive)
+// Simulated macOS desktop — click the shortcut button to pop the overlay.
+// ──────────────────────────────────────────────────────────────────────────────
+
+function HotkeySpotlight() {
+  return (
+    <FeatureSpotlight
+      id="hotkey"
+      eyebrow="Feature 06 · Global Hotkey"
+      title={<>One shortcut. <span className="italic">Any app, instantly</span>.</>}
+      body="Press ⌘⌥O from Safari, Figma, Terminal — anywhere — and OctoVault AI snaps to the front. Ask a question, look up a date, fetch a reference number. Press Escape to vanish. No context switch, no dock hunting."
+      bullets={[
+        "Works system-wide — any app in the foreground",
+        "Configurable shortcut in Settings",
+        "Escape or click outside to dismiss instantly",
+      ]}
+      side="right"
+    >
+      <HotkeyWidget />
+    </FeatureSpotlight>
+  );
+}
+
+const HOTKEY_QUERY = "When does my passport expire?";
+const HOTKEY_ANSWER = "Your passport (issued 12 Jan 2022) expires 11 Jan 2032 — just under 6 years away.";
+
+function HotkeyWidget() {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState(0);
+  const [answered, setAnswered] = useState(false);
+  const [ansTyped, setAnsTyped] = useState(0);
+
+  function trigger() {
+    if (open) return;
+    setOpen(true);
+    setTyped(0);
+    setAnswered(false);
+    setAnsTyped(0);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    let idx = 0;
+    const id = setInterval(() => {
+      idx += 1;
+      setTyped(idx);
+      if (idx >= HOTKEY_QUERY.length) {
+        clearInterval(id);
+        setTimeout(() => setAnswered(true), 500);
+      }
+    }, 55);
+    return () => clearInterval(id);
+  }, [open]);
+
+  useEffect(() => {
+    if (!answered) return;
+    let idx = 0;
+    const id = setInterval(() => {
+      idx += 2;
+      setAnsTyped(idx);
+      if (idx >= HOTKEY_ANSWER.length) clearInterval(id);
+    }, 18);
+    return () => clearInterval(id);
+  }, [answered]);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_-20px_rgba(0,0,0,0.12)]">
+      <div className="relative h-[380px] select-none bg-gradient-to-br from-muted/30 via-background to-muted/20">
+        {/* Faux background app window — blurs when overlay opens */}
+        <div
+          className={`absolute inset-4 bottom-16 rounded-xl border border-border bg-background/70 p-4 backdrop-blur-sm transition-all duration-300 ${open ? "opacity-25 blur-[1.5px]" : "opacity-100"}`}
+        >
+          <div className="mb-3 flex items-center gap-1.5">
+            <div className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
+            <div className="h-2.5 w-2.5 rounded-full bg-amber-400/60" />
+            <div className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
+            <div className="ml-2 h-2 w-36 rounded-full bg-muted-foreground/15" />
+          </div>
+          <div className="space-y-2">
+            {[90, 75, 85, 60, 80, 55, 70].map((w, i) => (
+              <div key={i} className="h-2 rounded" style={{ width: `${w}%`, background: "hsl(var(--muted-foreground)/0.10)" }} />
+            ))}
+          </div>
+        </div>
+
+        {/* OctoVault overlay — slides in from top */}
+        {open && (
+          <div className="absolute inset-x-8 top-6 z-20 animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[0_32px_80px_-16px_rgba(0,0,0,0.35)]">
+              <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
+                <OctoMark className="h-4 w-4" />
+                <span className="text-[11px] font-semibold tracking-wide">OctoVault AI</span>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  esc
+                </button>
+              </div>
+              <div className="border-b border-border px-4 py-3">
+                <span className="font-mono text-[13px] text-foreground">
+                  {HOTKEY_QUERY.slice(0, typed)}
+                </span>
+                <span className="inline-block h-[14px] w-px animate-pulse bg-foreground align-middle" />
+              </div>
+              {answered && (
+                <div className="px-4 py-3 animate-in fade-in duration-150">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <p className="text-[12px] leading-relaxed text-muted-foreground">
+                      {HOTKEY_ANSWER.slice(0, ansTyped)}
+                      {ansTyped < HOTKEY_ANSWER.length && (
+                        <span className="inline-block h-[12px] w-px animate-pulse bg-muted-foreground align-middle" />
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom bar: trigger / dismiss */}
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 border-t border-border bg-background/80 px-4 py-3 backdrop-blur-sm">
+          {!open ? (
+            <button
+              onClick={trigger}
+              className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-[12px] font-medium shadow-sm transition-colors hover:bg-accent"
+            >
+              Try it
+              <span className="flex items-center gap-0.5">
+                {["⌘", "⌥", "O"].map((k) => (
+                  <kbd key={k} className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none shadow-sm">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent"
+            >
+              Press <kbd className="mx-1 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">esc</kbd> to dismiss
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Spotlight #7 — Floating edge shortcut (interactive)
+// Click the pinned icon to slide open the quick-lookup panel.
+// ──────────────────────────────────────────────────────────────────────────────
+
+function FloatingShortcutSpotlight() {
+  return (
+    <FeatureSpotlight
+      id="floating"
+      eyebrow="Feature 07 · Floating Shortcut"
+      title={<>Edge-pinned. <span className="italic">Always one click away</span>.</>}
+      body="The OctoVault icon floats on your screen edge — always visible, never in the way. Click to open an instant quick-lookup panel with your key facts. No dock hunt, no app switch. Drag it to any corner you like."
+      bullets={[
+        "Stays above all windows — never buried",
+        "Draggable to any screen edge or corner",
+        "Toggle on/off in Settings anytime",
+      ]}
+      side="left"
+    >
+      <FloatingShortcutWidget />
+    </FeatureSpotlight>
+  );
+}
+
+const QUICK_FACTS = [
+  { label: "Passport Expiry",   value: "11 Jan 2032" },
+  { label: "Visa Status",       value: "H-1B · Active" },
+  { label: "I-94 Admit Until",  value: "D/S" },
+  { label: "EAD Expiry",        value: "14 Mar 2027" },
+  { label: "SSN on file",       value: "●●●-●●-1234" },
+];
+
+function FloatingShortcutWidget() {
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_-20px_rgba(0,0,0,0.12)]"
+      style={{ height: 380 }}
+    >
+      {/* Faux webpage content — dims when panel opens */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br from-muted/30 to-muted/10 p-4 pr-12 transition-all duration-300 ${panelOpen ? "opacity-40 blur-[1px]" : "opacity-100"}`}
+      >
+        <div className="mb-3 flex items-center gap-1.5">
+          <div className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
+          <div className="h-2.5 w-2.5 rounded-full bg-amber-400/60" />
+          <div className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
+          <div className="mx-2 flex-1 rounded-full border border-border bg-background/80 px-3 py-0.5 font-mono text-[9px] text-muted-foreground/50">
+            uscis.gov/forms/i-539
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-background/60 p-4 backdrop-blur-sm">
+          <div className="mb-2 h-3 w-28 rounded bg-muted-foreground/20" />
+          <div className="mb-4 h-2 w-44 rounded bg-muted-foreground/10" />
+          <div className="space-y-3">
+            {[
+              { w: "40%", label: "Full Name" },
+              { w: "55%", label: "Date of Birth" },
+              { w: "45%", label: "Passport No." },
+            ].map((f) => (
+              <div key={f.label}>
+                <div className="mb-1 h-1.5 w-16 rounded bg-muted-foreground/20" />
+                <div className="h-6 rounded border border-border bg-background/80" style={{ width: f.w }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Floating icon pinned to right edge */}
+      <div className="absolute right-0 top-1/2 z-20 -translate-y-1/2">
+        <button
+          onClick={() => setPanelOpen((v) => !v)}
+          title="OctoVault Quick Lookup"
+          className={`flex h-12 w-10 flex-col items-center justify-center rounded-l-xl border border-r-0 border-border bg-background shadow-lg transition-colors ${panelOpen ? "bg-accent" : "hover:bg-accent"}`}
+        >
+          <OctoMark className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Sliding quick-lookup panel */}
+      <div
+        className={`absolute inset-y-0 right-10 z-10 w-52 border-l border-border bg-background shadow-2xl transition-all duration-300 ${panelOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"}`}
+      >
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+          <OctoMark className="h-3.5 w-3.5" />
+          <span className="text-[11px] font-semibold">Quick look-up</span>
+          <button
+            onClick={() => setPanelOpen(false)}
+            className="ml-auto text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="divide-y divide-border">
+          {QUICK_FACTS.map((f) => (
+            <div key={f.label} className="px-3 py-2">
+              <div className="text-[9.5px] uppercase tracking-wide text-muted-foreground">{f.label}</div>
+              <div className="mt-0.5 font-mono text-[12px] font-medium">{f.value}</div>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-border p-2.5">
+          <button className="w-full rounded-lg bg-foreground py-1.5 text-[11px] font-medium text-background transition-opacity hover:opacity-90">
+            Fill all fields ↗
+          </button>
+        </div>
+      </div>
+
+      {/* Hint shown when panel is closed */}
+      {!panelOpen && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+          <div className="flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm">
+            <ArrowRight className="h-3 w-3" />
+            Click the icon on the right edge
+          </div>
+        </div>
+      )}
     </div>
   );
 }

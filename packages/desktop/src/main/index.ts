@@ -7,6 +7,7 @@ import http from "node:http";
 import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import * as vault from "./sqlite-store";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -442,6 +443,59 @@ ipcMain.handle("ollama.health", async (_e, cfg: OllamaCfg) => {
     const r = await fetch(`${cfg.url}/api/tags`);
     return { reachable: r.ok };
   } catch { return { reachable: false }; }
+});
+
+type EnsureRunningResult =
+  | { status: "running" }
+  | { status: "started" }
+  | { status: "not_installed"; downloadUrl: string }
+  | { status: "error"; message: string };
+
+async function checkOllamaReachable(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${url}/api/tags`);
+    return r.ok;
+  } catch { return false; }
+}
+
+ipcMain.handle("ollama.ensureRunning", async (_e, cfg: OllamaCfg): Promise<EnsureRunningResult> => {
+  try {
+    if (await checkOllamaReachable(cfg.url)) return { status: "running" };
+
+    let binaryExists = false;
+    try {
+      execSync("which ollama", { stdio: "ignore" });
+      binaryExists = true;
+    } catch { /* not on PATH */ }
+
+    if (!binaryExists) {
+      return { status: "not_installed", downloadUrl: "https://ollama.com/download" };
+    }
+
+    // Binary exists but server isn't up — launch the menu-bar app so
+    // it starts its built-in server. On macOS this is the standard path;
+    // the .app bundles `ollama serve` internally.
+    execSync("open -a Ollama", { stdio: "ignore" });
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    if (await checkOllamaReachable(cfg.url)) return { status: "started" };
+
+    // Menu-bar app didn't start the server — try the CLI directly.
+    // `ollama serve` is a long-running process; spawn detached and unref
+    // so it outlives the IPC call without blocking the main process.
+    const { spawn } = await import("node:child_process");
+    const child = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
+    child.unref();
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    if (await checkOllamaReachable(cfg.url)) return { status: "started" };
+
+    return { status: "error", message: "Ollama binary found but server did not start. Try running `ollama serve` in a terminal." };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+  }
 });
 
 ipcMain.handle("ollama.listModels", async (_e, cfg: OllamaCfg) => {

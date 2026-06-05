@@ -8,9 +8,17 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 interface OllamaCfg { url: string; llmModel: string; embeddingModel: string }
 
+type EnsureRunningResult =
+  | { status: "running" }
+  | { status: "started" }
+  | { status: "not_installed"; downloadUrl: string }
+  | { status: "error"; message: string };
+
 const ollama = {
   health: (cfg: OllamaCfg) =>
     ipcRenderer.invoke("ollama.health", cfg) as Promise<{ reachable: boolean }>,
+  ensureRunning: (cfg: OllamaCfg) =>
+    ipcRenderer.invoke("ollama.ensureRunning", cfg) as Promise<EnsureRunningResult>,
   listModels: (cfg: OllamaCfg) =>
     ipcRenderer.invoke("ollama.listModels", cfg) as Promise<string[]>,
   generate: (cfg: OllamaCfg, body: object) =>

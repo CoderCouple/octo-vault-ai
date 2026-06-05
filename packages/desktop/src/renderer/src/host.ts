@@ -2,7 +2,7 @@
 // from core, and routes Ollama calls through the preload bridge to
 // avoid CORS issues from the renderer origin.
 
-import type { AppHost } from "@octovault/ui";
+import type { AppHost, OllamaEnsureRunningResult } from "@octovault/ui";
 import {
   ask as askLocal,
   classifyByKeywords,
@@ -20,6 +20,7 @@ declare global {
     octovault?: {
       ollama: {
         health: (cfg: OllamaCfg) => Promise<{ reachable: boolean }>;
+        ensureRunning: (cfg: OllamaCfg) => Promise<OllamaEnsureRunningResult>;
         listModels: (cfg: OllamaCfg) => Promise<string[]>;
         generate: (cfg: OllamaCfg, body: object) => Promise<{ response: string }>;
         embed: (cfg: OllamaCfg, model: string, prompt: string) => Promise<{ embedding: number[] }>;
@@ -79,6 +80,10 @@ export const desktopHost: AppHost = {
       const r = await window.octovault!.ollama.health(await cfg());
       return r.reachable;
     } catch { return false; }
+  },
+
+  async ollamaEnsureRunning(): Promise<OllamaEnsureRunningResult> {
+    return window.octovault!.ollama.ensureRunning(await cfg());
   },
 
   async extractFromText(documentId, text): Promise<ExtractionResult> {

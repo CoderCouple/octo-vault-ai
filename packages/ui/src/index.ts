@@ -1,5 +1,5 @@
 export { App, type AppLayout } from "./App";
-export { useAppContext, AppProvider, type AppHost, type VaultSource } from "./context";
+export { useAppContext, AppProvider, type AppHost, type VaultSource, type OllamaEnsureRunningResult } from "./context";
 export { Documents } from "./views/Documents";
 export { ProfileView } from "./views/Profile";
 export { Conflicts } from "./views/Conflicts";
