@@ -3,7 +3,7 @@
 // numbered citations linked to source documents and fields.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, AtSign, FileText, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUp, AtSign, FileText, Loader2, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Sparkles, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
@@ -81,6 +81,16 @@ export function Chat() {
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY));
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Collapsible history rail. Persisted so the user's preference
+  // survives reloads. Useful in narrow surfaces (Chrome side panel,
+  // popup) where the 240px rail crowds the message column.
+  const [historyOpen, setHistoryOpen] = useState<boolean>(() => {
+    const v = localStorage.getItem("octovault.chat.historyOpen");
+    return v == null ? true : v === "1";
+  });
+  useEffect(() => {
+    localStorage.setItem("octovault.chat.historyOpen", historyOpen ? "1" : "0");
+  }, [historyOpen]);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Ensure there's always one active conversation.
@@ -195,13 +205,30 @@ export function Chat() {
 
   return (
     <div className="flex h-full">
-      {/* History rail */}
-      <aside className="flex w-60 shrink-0 flex-col border-r">
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className={tx.microcap}>History</span>
+      {/* History rail — collapsible. When collapsed, a thin gutter
+          keeps "New chat" + a reopen affordance visible so users
+          aren't stranded. */}
+      {!historyOpen && (
+        <aside className="flex w-10 shrink-0 flex-col items-center gap-1 border-r py-2">
+          <Button size="sm" variant="ghost" onClick={() => setHistoryOpen(true)} title="Show history">
+            <PanelLeftOpen className="h-4 w-4" />
+          </Button>
           <Button size="sm" variant="ghost" onClick={newConversation} title="New chat">
             <MessageSquarePlus className="h-4 w-4" />
           </Button>
+        </aside>
+      )}
+      <aside className={cn("flex shrink-0 flex-col border-r", historyOpen ? "w-60" : "hidden")}>
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <span className={tx.microcap}>History</span>
+          <div className="flex items-center gap-0.5">
+            <Button size="sm" variant="ghost" onClick={newConversation} title="New chat">
+              <MessageSquarePlus className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setHistoryOpen(false)} title="Hide history">
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {conversations.length === 0 ? (

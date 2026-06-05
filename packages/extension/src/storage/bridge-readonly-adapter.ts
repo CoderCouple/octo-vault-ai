@@ -4,10 +4,11 @@
 
 import {
   DEFAULT_SETTINGS,
-  type FieldRecord, type Settings, type StorageAdapter, type StoredDocument,
+  type EmbeddingRecord, type FieldRecord, type RelationshipEdge,
+  type Settings, type StorageAdapter, type StoredDocument,
 } from "@octovault/core";
 import type {
-  EducationRecord, Entity, ExperienceRecord, Profile, ProfileKey, VaultProfile,
+  EducationRecord, Entity, Event, ExperienceRecord, Profile, ProfileKey, VaultProfile,
 } from "@octovault/core";
 
 const BRIDGE = "http://127.0.0.1:53117";
@@ -33,8 +34,9 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   async saveEntity(_e) { throw new ReadOnlyError(); },
   async deleteEntity(_id) { throw new ReadOnlyError(); },
 
-  // Embeddings — bridge doesn't serve them; popup chat falls back to local IDB.
-  async listEmbeddings() { return []; },
+  // Embeddings — served from /embeddings so the extension can run
+  // chat directly against the desktop vault's facts + chunks.
+  async listEmbeddings() { return get<EmbeddingRecord[]>("/embeddings", []); },
   async saveEmbeddings(_records) { throw new ReadOnlyError(); },
   async deleteEmbeddingsForDoc(_id) { throw new ReadOnlyError(); },
 
@@ -53,14 +55,15 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   async deleteExperience(_id) { throw new ReadOnlyError(); },
   async deleteRecordsFromDoc(_id) { throw new ReadOnlyError(); },
 
-  // Relationships — desktop bridge doesn't expose them yet; return empty.
-  async listRelationships() { return []; },
+  // Relationships — pulled from /relationships so the Facts graph
+  // shows derived edges (spouse, parent, in-laws, etc.) in extension.
+  async listRelationships() { return get<RelationshipEdge[]>("/relationships", []); },
   async saveRelationship(_r) { throw new ReadOnlyError(); },
   async deleteRelationship(_id) { throw new ReadOnlyError(); },
 
-  // Events — same shape as relationships above. Bridge doesn't yet
-  // serve event rows; reads return empty and writes throw.
-  async listEvents() { return []; },
+  // Events — first-class graph nodes (marriages, births, etc.) served
+  // from /events. Same read/write split as relationships.
+  async listEvents() { return get<Event[]>("/events", []); },
   async saveEvent(_e) { throw new ReadOnlyError(); },
   async deleteEvent(_id) { throw new ReadOnlyError(); },
   async deleteEventsFromDoc(_documentId: string) { throw new ReadOnlyError(); },

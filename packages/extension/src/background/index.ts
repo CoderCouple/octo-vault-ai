@@ -4,10 +4,22 @@
 
 import {
   generate, generateJson, isReachable, indexedDbAdapter,
-  matchFormFields, chooseFillProfile,
-  type OllamaConfig, type VaultProfile,
+  matchFormFields,
+  type Entity, type OllamaConfig, type VaultProfile,
 } from "@octovault/core";
 import { bridgeReachable, fetchProfileFromBridge } from "../bridge";
+
+// Read entities from desktop bridge when available, else local IDB.
+async function fetchEntities(): Promise<Entity[]> {
+  try {
+    const r = await fetch("http://127.0.0.1:53117/entities");
+    if (r.ok) {
+      const data = await r.json() as Entity[];
+      if (Array.isArray(data) && data.length > 0) return data;
+    }
+  } catch { /* fall through to local */ }
+  return indexedDbAdapter.listEntities();
+}
 
 const DESKTOP_OLLAMA_PROXY = "http://127.0.0.1:53117/ollama";
 
@@ -54,19 +66,19 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
         : generate(await cfg(), { prompt: msg.prompt as string, system: msg.system as string | undefined });
 
     case "form.match": {
-      // Prefer desktop's vault if reachable; else extension's own IDB.
-      // Both are now multi-entity (VaultProfile). Pick one entity to fill
-      // the form with (self by default).
+      // Multi-entity matching (Phase C). We pass the full vault +
+      // entities to the matcher so fields under a "Spouse" or
+      // "Emergency Contact" section route to the right entity.
+      // Response includes the vault so the content script can resolve
+      // value = vault[match.entityId][match.profileKey] at fill time.
       const remote = await fetchProfileFromBridge() as VaultProfile | null;
       const vault: VaultProfile = remote && Object.keys(remote).length > 0
         ? remote
         : await indexedDbAdapter.getAllProfiles();
-      const chosen = chooseFillProfile(vault);
-      const profile = chosen?.profile ?? {};
-      const entityId = chosen?.entityId ?? "self";
+      const entities = await fetchEntities();
       const source = remote ? "desktop" : "extension";
-      const matches = await matchFormFields(await cfg(), msg.fields as never, profile);
-      return { matches, profile, entityId, source };
+      const matches = await matchFormFields(await cfg(), msg.fields as never, vault, entities);
+      return { matches, vault, entities, source };
     }
 
     case "bridge.health":

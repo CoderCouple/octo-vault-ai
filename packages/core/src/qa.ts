@@ -252,7 +252,7 @@ const MAX_QUERY_VARIANTS = 3;
 // time-to-first-token in the chat UI. Above this budget we proceed
 // with the original query and let the rewrite settle into the cache
 // for next time.
-const QUERY_REWRITE_BUDGET_MS = 1500;
+const QUERY_REWRITE_BUDGET_MS = 500;
 
 function expandQueryVariantsRaw(engine: QaEngine, question: string): Promise<string[]> {
   const trimmed = question.trim();

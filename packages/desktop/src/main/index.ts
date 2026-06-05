@@ -104,6 +104,15 @@ const bridge = http.createServer((req, res) => {
         case "/profile":   return send(res, req, 200, cachedProfile);
         case "/documents": return send(res, req, 200, cachedDocs);
         case "/entities":  return send(res, req, 200, cachedEntities);
+        // Direct-from-store endpoints. The renderer doesn't push these
+        // through bridge.publishSnapshot because embeddings are large
+        // (768-float vectors × N) and round-tripping them through IPC
+        // just to push them out over HTTP is wasteful. The bridge runs
+        // in the same process as the SQLCipher store, so we read
+        // directly. Empty array if the vault is locked.
+        case "/embeddings":    return send(res, req, 200, vault.isOpen() ? vault.store.listEmbeddings() : []);
+        case "/relationships": return send(res, req, 200, vault.isOpen() ? vault.store.listRelationships() : []);
+        case "/events":        return send(res, req, 200, vault.isOpen() ? vault.store.listEvents() : []);
         default:           return send(res, req, 404, { error: "not found" });
       }
     } catch (err) {

@@ -120,16 +120,40 @@ function PopupLayout() {
           <SourcePill />
         </div>
       </header>
-      <Tabs defaultValue="documents" className="flex flex-1 flex-col overflow-hidden">
+      <Tabs defaultValue="chat" className="flex flex-1 flex-col overflow-hidden">
         <div className="border-b px-3 py-2">
+          {/* Six tabs at default Chrome side-panel width (~360px).
+              Each gets icon + label; flex-1 distributes the row. */}
           <TabsList className="w-full">
-            <TabsTrigger value="documents" className="flex-1">Docs</TabsTrigger>
-            <TabsTrigger value="profile" className="flex-1">Profile</TabsTrigger>
-            <TabsTrigger value="conflicts" className="flex-1">Conflicts</TabsTrigger>
-            <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+            <TabsTrigger value="chat" className="flex-1" title="Chat">
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Chat</span>
+            </TabsTrigger>
+            <TabsTrigger value="facts" className="flex-1" title="Facts graph">
+              <Network className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Facts</span>
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="flex-1" title="Documents">
+              <FileText className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Docs</span>
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="flex-1" title="Profile">
+              <UserCircle2 className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Profile</span>
+            </TabsTrigger>
+            <TabsTrigger value="conflicts" className="flex-1" title="Conflicts">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Conflicts</span>
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex-1" title="Settings">
+              <SettingsIcon className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">Settings</span>
+            </TabsTrigger>
           </TabsList>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <TabsContent value="chat"      className="m-0 h-full"><Chat /></TabsContent>
+          <TabsContent value="facts"     className="m-0 h-full"><FactsGraph /></TabsContent>
           <TabsContent value="documents" className="m-0 h-full"><Documents /></TabsContent>
           <TabsContent value="profile"   className="m-0 h-full"><ProfileView /></TabsContent>
           <TabsContent value="conflicts" className="m-0 h-full"><Conflicts /></TabsContent>
