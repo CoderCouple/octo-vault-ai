@@ -173,7 +173,7 @@ export function Documents() {
       }
 
       updateJob(id, { state: "extracting", progress: 0.5, message: "Extracting fields" });
-      const { docType, candidates, extras, education, experience, entityName, relationshipHint, sanitization, review } =
+      const { docType, candidates, extras, inferredRelationships, education, experience, entityName, relationshipHint, sanitization, review } =
         await host.extractFromText(docId, text);
       const cleanups: string[] = [];
       if (sanitization?.dropped) cleanups.push(`${sanitization.dropped} dropped`);
@@ -234,6 +234,35 @@ export function Documents() {
       if (withEntity.length) await addCandidates(storage, withEntity);
       for (const e of education) await storage.saveEducation({ ...e, entityId: entity.id });
       for (const e of experience) await storage.saveExperience({ ...e, entityId: entity.id });
+
+      // Auto-emit relationships from civil-status docs (Phase 4a).
+      // Marriage cert / divorce decree → spouse edge; birth cert /
+      // adoption record → parent edge. The extractor returned name
+      // strings; we resolve each to an entity (creating if needed)
+      // and save a RelationshipEdge whose source is the doc.
+      for (const ir of inferredRelationships) {
+        try {
+          const otherEntity = await resolveEntityFromName(
+            ir.otherName,
+            ir.kind === "spouse" ? "spouse" : "parent",
+          );
+          if (otherEntity.id === entity.id) continue; // self-edge guard
+          const now = Date.now();
+          await storage.saveRelationship({
+            id: crypto.randomUUID(),
+            fromEntityId: entity.id,
+            toEntityId: otherEntity.id,
+            kind: ir.kind,
+            derivedFrom: `extract:${docType}`,
+            source: { documentId: doc.id, excerpt: ir.excerpt },
+            bidirectional: ir.kind === "spouse",
+            createdAt: now,
+            updatedAt: now,
+          });
+        } catch (e) {
+          console.warn(`[ingest] failed to auto-emit ${ir.kind} relationship for "${ir.otherName}":`, e);
+        }
+      }
 
       // Best-effort embedding for chat.
       updateJob(id, { state: "indexing", progress: 0.7, message: "Indexing for chat" });

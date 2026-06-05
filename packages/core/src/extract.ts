@@ -211,6 +211,24 @@ export interface ExtraFact {
   extractedAt: number;
 }
 
+// Name-based relationship suggestion the extractor derives from a
+// civil-status doc. The caller resolves `otherName` to an existing
+// entity (or creates a new one) and then saves a RelationshipEdge.
+// Why name-based: extract.ts doesn't have entity-id context. The
+// caller (Documents.tsx) does have access to the storage adapter +
+// resolveEntityFromName helper, so resolution + save happen there.
+export interface InferredRelationship {
+  // The other person's full name as it appears in the document.
+  otherName: string;
+  // Kind of edge to create. Spouse for marriages, parent for births /
+  // adoptions, etc. Matches RelationshipKind in schema.ts.
+  kind: "spouse" | "parent" | "child";
+  // What doc the inference came from — preserved as the edge source.
+  sourceDocId: string;
+  // Short verbatim snippet for provenance.
+  excerpt?: string;
+}
+
 interface ExtractionResponse {
   docType: DocType;
   entityName: string | null;
@@ -232,6 +250,10 @@ export interface ExtractionResult {
   // Indexed for retrieval (via embeddings) but not part of the
   // canonical Profile until Phase 4 unifies them.
   extras: ExtraFact[];
+  // Relationships the doc establishes — e.g., a marriage certificate
+  // emits a spouse edge between the primary subject and the named
+  // spouse. Name-based; caller resolves to entity ids and saves.
+  inferredRelationships: InferredRelationship[];
   education: Omit<EducationRecord, "entityId">[];
   experience: Omit<ExperienceRecord, "entityId">[];
   // What sanitization did to the raw LLM output. Useful for the
@@ -421,12 +443,52 @@ Rules:
     });
   }
 
+  // Derive inferred relationships from the typed civil-status fields.
+  // This is what makes the knowledge graph self-building: a marriage
+  // certificate doesn't just store a `spouseName` field — it also
+  // emits a Relationship row between the primary subject and the
+  // named spouse. The caller (Documents.tsx) handles entity
+  // resolution + the actual save.
+  //
+  // Why we read from finalCandidates (post-review) rather than the
+  // raw response: review may have rejected a low-confidence
+  // spouseName as a hallucination, and we don't want to emit a
+  // spouse edge from a value we already rejected.
+  const inferredRelationships: InferredRelationship[] = [];
+  function fieldValue(key: ProfileKey): string | undefined {
+    return finalCandidates.find((c) => c.fieldKey === key)?.value;
+  }
+  function pushRel(key: ProfileKey, kind: InferredRelationship["kind"]) {
+    const v = fieldValue(key)?.trim();
+    if (!v) return;
+    const cand = finalCandidates.find((c) => c.fieldKey === key);
+    inferredRelationships.push({
+      otherName: v,
+      kind,
+      sourceDocId: documentId,
+      excerpt: cand?.source.excerpt,
+    });
+  }
+  if (docType === "marriage_certificate" || docType === "marriage_license") {
+    pushRel("spouseName", "spouse");
+  }
+  if (docType === "divorce_decree") {
+    // Still capture the (former) spouse so the user can see who the
+    // doc references; the user can downgrade or delete the edge.
+    pushRel("spouseName", "spouse");
+  }
+  if (docType === "birth_certificate" || docType === "adoption_record") {
+    pushRel("fatherName", "parent");
+    pushRel("motherName", "parent");
+  }
+
   return {
     docType,
     entityName: finalEntityName,
     relationshipHint,
     candidates: finalCandidates,
     extras,
+    inferredRelationships,
     education, experience,
     sanitization: report,
     review: reviewSummary,
