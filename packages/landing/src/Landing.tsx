@@ -222,7 +222,7 @@ function Hero() {
             the right-click → Open path; users now have to allow via System
             Settings → Privacy & Security → "Open Anyway". */}
         <p className="mt-2 text-[11px] text-muted-foreground/80">
-          Unsigned beta — if macOS blocks it, open <strong>System Settings → Privacy &amp; Security</strong> → click <strong>Open Anyway</strong>.
+          Signed &amp; notarized · Developer ID verified by Apple · macOS 12+
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
@@ -2382,13 +2382,41 @@ function Cta() {
           </button>
         </form>
         {status === "ok" && (
-          <p className="mt-4 text-[13px] text-muted-foreground">
-            Thanks — we'll be in touch as soon as a beta slot opens.
+          <div className="mt-6 space-y-4">
+            <p className="text-[14px] text-muted-foreground">
+              You're on the list. Know someone else drowning in paperwork?
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent("Just joined the waitlist for OctoVault AI — a local AI that reads your documents and fills government forms. No cloud, no data sharing. Check it out:")}&url=${encodeURIComponent("https://octovault.ai")}`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={() => track("waitlist_share_clicked", { channel: "twitter" })}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3.5 py-2 text-[12px] font-medium hover:bg-accent transition-colors"
+              >
+                Share on X
+              </a>
+              <a
+                href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent("https://octovault.ai")}`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={() => track("waitlist_share_clicked", { channel: "linkedin" })}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3.5 py-2 text-[12px] font-medium hover:bg-accent transition-colors"
+              >
+                Share on LinkedIn
+              </a>
+              <button
+                onClick={() => { void navigator.clipboard.writeText("https://octovault.ai"); track("waitlist_share_clicked", { channel: "copy" }); }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3.5 py-2 text-[12px] font-medium hover:bg-accent transition-colors"
+              >
+                Copy link
+              </button>
+            </div>
+          </div>
+        )}
+        {status !== "ok" && (
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            By joining, you'll receive at most one email per month while we're in beta.
           </p>
         )}
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          By joining, you'll receive at most one email per month while we're in beta.
-        </p>
       </div>
     </section>
   );
