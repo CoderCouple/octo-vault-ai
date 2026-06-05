@@ -16,7 +16,7 @@ import {
   MessageSquare, ShieldCheck, Sparkles, WifiOff,
 } from "lucide-react";
 import {
-  addUserCandidate, initialsFor, listModels, normalizeValue, SELF_ENTITY_ID,
+  addUserCandidate, hasModel, initialsFor, listModels, normalizeValue, SELF_ENTITY_ID,
   type Entity, type OllamaConfig,
 } from "@octovault/core";
 import { useAppContext } from "../context";
@@ -62,8 +62,11 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
     return () => clearInterval(id);
   }, [host, settings.ollamaUrl, settings.llmModel, settings.embeddingModel]);
 
-  const llmInstalled = installedModels.some((m) => m === settings.llmModel);
-  const embedInstalled = installedModels.some((m) => m === settings.embeddingModel);
+  // Ollama tags an untagged pull as `:latest`, so a strict `===`
+  // check marks freshly-pulled models as "missing". hasModel
+  // normalizes both sides before comparing.
+  const llmInstalled = hasModel(installedModels, settings.llmModel);
+  const embedInstalled = hasModel(installedModels, settings.embeddingModel);
 
   // --- "You" step state ---
   const [name, setName] = useState(self?.name === "Self" ? "" : (self?.name ?? ""));

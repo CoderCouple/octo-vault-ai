@@ -43,6 +43,20 @@ export async function listModels(cfg: OllamaConfig): Promise<string[]> {
   }
 }
 
+/** Ollama tags API always returns a tag suffix (`nomic-embed-text:latest`)
+ *  but configs typically store the untagged form (`nomic-embed-text`),
+ *  which is implicitly `:latest`. Strict `===` checks were marking
+ *  freshly-pulled models as "missing" on the onboarding screen.
+ *  This helper normalizes both sides before comparing. */
+export function modelMatches(installed: string, configured: string): boolean {
+  const norm = (s: string) => (s.includes(":") ? s : `${s}:latest`).toLowerCase();
+  return norm(installed) === norm(configured);
+}
+
+export function hasModel(installed: string[], configured: string): boolean {
+  return installed.some((m) => modelMatches(m, configured));
+}
+
 export async function generate(cfg: OllamaConfig, opts: GenerateOptions): Promise<string> {
   const body = {
     model: cfg.llmModel,

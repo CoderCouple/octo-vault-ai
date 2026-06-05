@@ -5,8 +5,11 @@
 import type { AppHost } from "@octovault/ui";
 import {
   ask as askLocal,
+  classifyByKeywords,
+  DOC_TYPES,
   extractionSchema,
   normalizeValue, parseModelJson, PROFILE_FIELDS,
+  RELATIONSHIPS,
   type EducationRecord, type ExperienceRecord,
   type ExtractionResult, type FieldCandidate, type DocType, type ProfileKey, type QaEngine, type QaResult, type Relationship,
 } from "@octovault/core";
@@ -61,12 +64,11 @@ async function cfg(): Promise<OllamaCfg> {
   return { url: s.ollamaUrl, llmModel: s.llmModel, embeddingModel: s.embeddingModel };
 }
 
-const DOC_TYPES: DocType[] = [
-  "passport", "drivers_license", "national_id", "ssn_card", "tax_form", "paystub",
-  "utility_bill", "bank_statement", "insurance_card", "lease", "vehicle_registration",
-  "school_letter", "employment_letter", "medical_record", "unknown",
-];
-const RELATIONSHIPS: Relationship[] = ["self", "spouse", "partner", "child", "parent", "sibling", "dependent", "other"];
+// DOC_TYPES + RELATIONSHIPS now come from @octovault/core so the
+// renderer enum matches the schema. The duplicate that used to live
+// here was missing every civil-status and immigration type, so
+// marriage certs / birth certs / I-797s could never classify as
+// anything other than "unknown".
 
 export const desktopHost: AppHost = {
   surface: "desktop",
@@ -137,7 +139,13 @@ Return JSON:
       experience?: Array<{ company: string; role: string; startDate?: string; endDate?: string; location?: string; description?: string; excerpt?: string }>;
     }>(resp.response);
 
-    const docType = DOC_TYPES.includes(parsed.docType) ? parsed.docType : "unknown";
+    // Trust the LLM classification first; fall back to keyword rules
+    // when it bails to "unknown" (common on scanned / non-US-formatted
+    // civil-status docs like Indian marriage certs).
+    const initialDocType: DocType = DOC_TYPES.includes(parsed.docType) ? parsed.docType : "unknown";
+    const docType: DocType = initialDocType === "unknown"
+      ? (classifyByKeywords(truncated) ?? "unknown")
+      : initialDocType;
     const entityName = (parsed.entityName ?? "").trim() || null;
     const relationshipHint = parsed.relationshipHint && RELATIONSHIPS.includes(parsed.relationshipHint)
       ? parsed.relationshipHint : undefined;

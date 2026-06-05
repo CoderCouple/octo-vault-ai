@@ -23,7 +23,7 @@ Use only what the document explicitly contains. Do not invent values. For confid
 if explicit and unambiguous, "medium" if implied or abbreviated, "low" if uncertain. Omit
 fields you cannot support.`;
 
-const DOC_TYPES: DocType[] = [
+export const DOC_TYPES: DocType[] = [
   "passport", "drivers_license", "national_id", "ssn_card",
   "marriage_certificate", "marriage_license", "divorce_decree",
   "birth_certificate", "adoption_record", "death_certificate", "court_order",
@@ -36,7 +36,75 @@ const DOC_TYPES: DocType[] = [
   "unknown",
 ];
 
-const RELATIONSHIPS: Relationship[] = ["self", "spouse", "partner", "child", "parent", "sibling", "dependent", "other"];
+export const RELATIONSHIPS: Relationship[] = ["self", "spouse", "partner", "child", "parent", "sibling", "dependent", "other"];
+
+// Deterministic doctype fallback. Only used when the LLM returns
+// "unknown" — qwen3:8b tends to bail on scanned or non-US-formatted
+// civil-status docs (Indian marriage certs, foreign birth certs)
+// even when the keywords are unambiguous. Rules fire in order; the
+// first hit wins, so put the more specific rules first.
+const KEYWORD_RULES: { type: DocType; patterns: RegExp[] }[] = [
+  { type: "marriage_certificate", patterns: [
+    /\bcertificate of marriage\b/i,
+    /\bmarriage certificate\b/i,
+    /\bsolemniz(ed|ation)\b/i,
+    /\bhindu marriage\b/i,
+    /\bspecial marriage act\b/i,
+    /\bbride\b.*\bgroom\b/is,
+    /\bgroom\b.*\bbride\b/is,
+    /विवाह.*प्रमाण/,           // Hindi: marriage certificate
+  ]},
+  { type: "marriage_license", patterns: [
+    /\bmarriage license\b/i,
+    /\blicense to marry\b/i,
+  ]},
+  { type: "divorce_decree", patterns: [
+    /\bdivorce decree\b/i,
+    /\bdecree of dissolution\b/i,
+    /\bdecree absolute\b/i,
+    /\bdissolution of marriage\b/i,
+  ]},
+  { type: "birth_certificate", patterns: [
+    /\bbirth certificate\b/i,
+    /\bcertificate of (live )?birth\b/i,
+    /जन्म.*प्रमाण/,            // Hindi: birth certificate
+  ]},
+  { type: "death_certificate", patterns: [
+    /\bdeath certificate\b/i,
+    /\bcertificate of death\b/i,
+  ]},
+  { type: "naturalization_certificate", patterns: [
+    /\bcertificate of naturali[sz]ation\b/i,
+    /\bnaturali[sz]ation certificate\b/i,
+  ]},
+  { type: "i797_approval_notice", patterns: [
+    /\bI-?797\b/i,
+    /\bUSCIS\b.*\bapproval notice\b/is,
+    /\bnotice of action\b/i,
+  ]},
+  { type: "green_card", patterns: [
+    /\bpermanent resident card\b/i,
+    /\bgreen card\b/i,
+  ]},
+  { type: "i94_record", patterns: [
+    /\bI-?94\b/i,
+    /\barrival.{0,10}departure record\b/i,
+  ]},
+  { type: "ead_card", patterns: [
+    /\bemployment authorization\b/i,
+    /\bEAD\b/,
+  ]},
+  { type: "passport", patterns: [
+    /\bpassport (no|number)\b/i,
+    /^P<[A-Z]{3}/m,             // MRZ line on passport bio page
+  ]},
+];
+export function classifyByKeywords(text: string): DocType | null {
+  for (const rule of KEYWORD_RULES) {
+    if (rule.patterns.some((re) => re.test(text))) return rule.type;
+  }
+  return null;
+}
 
 // Per-type extraction hints. When the document classifier picks one of
 // these types, we append the matching hint to the prompt so the LLM
@@ -371,7 +439,16 @@ Rules:
     system: SYSTEM, prompt,
     format: extractionSchema(),  // Ollama 0.5+ structured outputs
   });
-  const docType: DocType = DOC_TYPES.includes(raw.docType) ? raw.docType : "unknown";
+  // Trust the LLM classification first. When it picks "unknown" we
+  // run a cheap keyword fallback over the raw text — qwen3:8b tends
+  // to bail to "unknown" on scanned / non-US-formatted civil-status
+  // docs (e.g., Indian marriage certs) where the actual keywords are
+  // unambiguous. Only override "unknown"; never overrule a confident
+  // classification.
+  const initialDocType: DocType = DOC_TYPES.includes(raw.docType) ? raw.docType : "unknown";
+  const docType: DocType = initialDocType === "unknown"
+    ? (classifyByKeywords(truncated) ?? "unknown")
+    : initialDocType;
   const entityName = sanitizeEntityName((raw.entityName ?? "").trim() || null);
   const relationshipHint = raw.relationshipHint && RELATIONSHIPS.includes(raw.relationshipHint)
     ? raw.relationshipHint : undefined;
