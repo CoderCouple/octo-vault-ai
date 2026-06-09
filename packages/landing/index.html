@@ -3,15 +3,160 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Fill any web form from your own documents. Locally. No cloud, no servers, no data harvesting." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
-    <title>OctoVault — your private AI paperwork vault</title>
+
+    <!-- Primary -->
+    <title>OctoVault AI — your private, on-device document AI</title>
+    <meta name="description" content="OctoVault AI is a local-first knowledge graph for your personal documents. Drop in passports, IDs, leases, bills — it extracts every fact, links it back to the source, and lets you chat with the result. Nothing leaves your device." />
+    <link rel="canonical" href="https://octovault.ai/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Open Graph (Facebook, LinkedIn, Slack, Discord, Notion, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://octovault.ai/" />
+    <meta property="og:title" content="OctoVault AI — your private, on-device document AI" />
+    <meta property="og:description" content="Local-first knowledge graph for your personal documents. Extract every fact, link it to its source, chat with your vault — nothing leaves your device." />
+    <!-- PNG first (Facebook/Twitter require raster); SVG fallback for
+         Slack/LinkedIn/Discord/Notion which accept SVG. Drop a real
+         1200×630 PNG at public/og-image.png to override. -->
+    <meta property="og:image" content="https://octovault.ai/og-image.png" />
+    <meta property="og:image:secure_url" content="https://octovault.ai/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="OctoVault AI — your private, on-device document AI" />
+    <meta property="og:image" content="https://octovault.ai/og-image.svg" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:site_name" content="OctoVault AI" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://octovault.ai/" />
+    <meta name="twitter:title" content="OctoVault AI — your private, on-device document AI" />
+    <meta name="twitter:description" content="Local-first knowledge graph for your personal documents. Extract every fact, link it to its source, chat with your vault — nothing leaves your device." />
+    <meta name="twitter:image" content="https://octovault.ai/og-image.png" />
+    <meta name="twitter:image:alt" content="OctoVault AI — your private, on-device document AI" />
+
+    <!-- Structured data — SoftwareApplication + Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "OctoVault AI",
+          "description": "Local-first knowledge graph for personal documents. Extracts facts, links them to source documents, and answers natural-language questions — entirely on-device.",
+          "applicationCategory": "ProductivityApplication",
+          "operatingSystem": "macOS",
+          "url": "https://octovault.ai/",
+          "image": "https://octovault.ai/og-image.png",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "featureList": [
+            "Local-first document extraction (no cloud)",
+            "Knowledge graph view with source-linked facts",
+            "AI chat with cited answers (qwen3:8b + nomic-embed-text via Ollama)",
+            "Conflict detection and canonical-value resolution",
+            "Multi-entity profiles (you, family, dependents)",
+            "Encrypted local vault (SQLCipher)",
+            "Chrome side panel auto-fill (coming soon)"
+          ]
+        },
+        {
+          "@type": "Organization",
+          "name": "OctoVault AI",
+          "url": "https://octovault.ai/",
+          "logo": "https://octovault.ai/favicon.svg"
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Above-fold copy visible to crawlers without JS execution: HN
+      preview, Slack unfurls, archive.org, Lynx, RSS readers, screen
+      readers under no-script policies, search engines that don't
+      execute heavy SPAs. This block contains the elevator pitch, the
+      five product pillars, and an FAQ skeleton — enough that the
+      page has real signal even before Vite/React boot.
+    -->
+    <noscript>
+      <main style="max-width:760px;margin:48px auto;padding:0 24px;font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;">
+        <header>
+          <h1 style="font-size:36px;line-height:1.1;letter-spacing:-0.01em;margin:0 0 16px;">
+            OctoVault AI — your private, on-device document AI
+          </h1>
+          <p style="font-size:18px;color:#525252;margin:0 0 24px;">
+            A local-first knowledge graph for your personal documents.
+            Drop in a passport, a lease, a paystub — every fact gets
+            extracted, linked back to the document it came from, and
+            made instantly searchable. Nothing leaves your device.
+          </p>
+          <p>
+            <a href="#waitlist" style="background:#0a0a0a;color:#fafafa;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;">
+              Join the waitlist
+            </a>
+          </p>
+        </header>
+
+        <section>
+          <h2>What it does</h2>
+          <ul>
+            <li><strong>Extracts facts from documents</strong> — passports, IDs, leases, bills, paystubs, school letters. PDF or photo, text or scanned (on-device OCR via Qwen3-VL or Tesseract).</li>
+            <li><strong>Builds a knowledge graph</strong> — every fact is a node, linked to the document that produced it. Source citations are baked in.</li>
+            <li><strong>Resolves conflicts</strong> — when two documents disagree on your address or DOB, OctoVault flags it and lets you pin the canonical value.</li>
+            <li><strong>Answers questions</strong> — chat with your vault. "When does my passport expire?" Cited answers from your own documents, generated by qwen3:8b running locally via Ollama.</li>
+            <li><strong>Multi-entity</strong> — you, your spouse, your kids, your in-laws. The graph handles relationships, derives in-laws and co-parents automatically.</li>
+            <li><strong>Coming soon</strong>: a Chrome side panel that auto-fills web forms (visa applications, USCIS forms, school enrolments) from your knowledge graph.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>How it's private</h2>
+          <ul>
+            <li>Documents and extracted facts never leave your device.</li>
+            <li>AI runs locally via Ollama (default: qwen3:8b for chat, nomic-embed-text for retrieval embeddings, qwen3-vl:8b for OCR).</li>
+            <li>The desktop vault uses SQLCipher with a key derived from your master password.</li>
+            <li>The Chrome extension uses WebCrypto + IndexedDB and falls back to a localhost bridge to the desktop app.</li>
+            <li>No telemetry on document content. The landing page uses PostHog only for anonymous click events.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>FAQ</h2>
+          <dl>
+            <dt><strong>Does OctoVault upload my documents?</strong></dt>
+            <dd>No. Documents and extracted facts never leave your device. The AI runs locally via Ollama; the desktop app talks to it over localhost.</dd>
+            <dt><strong>Does it use ChatGPT or Claude?</strong></dt>
+            <dd>No. Default models are qwen3:8b and nomic-embed-text, both running on your machine via Ollama. You can swap any other Ollama-compatible model from Settings.</dd>
+            <dt><strong>What if I lose my master password?</strong></dt>
+            <dd>Your vault is gone — by design. SQLCipher encrypts the database with a key derived from the password; without it, we cannot recover the contents.</dd>
+            <dt><strong>Will it work on my old laptop?</strong></dt>
+            <dd>Anything from the last 5 years with 8GB RAM. The 8B model is the sweet spot; a smaller model (qwen2.5:3b) runs comfortably on 4GB.</dd>
+            <dt><strong>Which browsers does the side panel support?</strong></dt>
+            <dd>Any Chromium-based browser at version 114 or newer: Chrome, Edge, Brave, Arc. Firefox doesn't ship the side panel API yet.</dd>
+          </dl>
+        </section>
+
+        <footer>
+          <p style="color:#737373;font-size:13px;margin-top:48px;">
+            OctoVault AI is in private beta for macOS. Join the
+            waitlist at <a href="https://octovault.ai/">octovault.ai</a>
+            for launch updates.
+          </p>
+        </footer>
+      </main>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

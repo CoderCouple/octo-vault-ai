@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0a0a"/>
+      <stop offset="1" stop-color="#171717"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fafafa"/>
+      <stop offset="1" stop-color="#a3a3a3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Subtle grid lines -->
+  <g stroke="#262626" stroke-width="1" opacity="0.45">
+    <line x1="0" y1="105" x2="1200" y2="105"/>
+    <line x1="0" y1="210" x2="1200" y2="210"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+    <line x1="0" y1="525" x2="1200" y2="525"/>
+    <line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="900" y1="0" x2="900" y2="630"/>
+  </g>
+
+  <!-- OctoMark — diamond + dot + bar, in the brand silver -->
+  <g transform="translate(100, 245)">
+    <polygon points="42,9 102,9 135,42 135,102 102,135 42,135 9,102 9,42"
+             fill="none" stroke="url(#ring)" stroke-width="6" stroke-linejoin="round"/>
+    <circle cx="72" cy="64" r="10" fill="url(#ring)"/>
+    <rect x="67" y="74" width="10" height="22" fill="url(#ring)"/>
+  </g>
+
+  <!-- Wordmark + tagline -->
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" fill="#fafafa">
+    <text x="270" y="290" font-size="76" font-weight="700" letter-spacing="-0.02em">OctoVault AI</text>
+    <text x="272" y="350" font-size="32" font-weight="500" fill="#d4d4d4" letter-spacing="-0.005em">
+      Your private, on-device document AI
+    </text>
+    <text x="272" y="396" font-size="22" font-weight="400" fill="#a3a3a3">
+      Local knowledge graph for personal documents — chat with your vault, nothing leaves your device
+    </text>
+  </g>
+
+  <!-- Feature row -->
+  <g font-family="ui-monospace, SFMono-Regular, monospace" fill="#737373" font-size="18">
+    <text x="100" y="540">EXTRACT</text>
+    <text x="240" y="540" fill="#525252">·</text>
+    <text x="260" y="540">GRAPH</text>
+    <text x="370" y="540" fill="#525252">·</text>
+    <text x="390" y="540">CHAT</text>
+    <text x="480" y="540" fill="#525252">·</text>
+    <text x="500" y="540">FILL FORMS (SOON)</text>
+  </g>
+
+  <!-- Bottom-right URL -->
+  <text x="1100" y="585" font-family="ui-monospace, SFMono-Regular, monospace" font-size="20" fill="#a3a3a3" text-anchor="end">octovault.ai</text>
+</svg>
