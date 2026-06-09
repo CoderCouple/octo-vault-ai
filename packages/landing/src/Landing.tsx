@@ -124,23 +124,58 @@ const MAC_DOWNLOADS = {
   },
 } as const;
 
-function Hero() {
+// Shared download button — used by both the hero and the Pricing
+// section's Free tier. Each consumer passes a unique attr so PostHog
+// click events stay distinguishable. Spinner-only handler does NOT
+// preventDefault — the browser's native <a href download> flow is
+// what actually triggers the file save; intercepting with window.open
+// / iframes broke the download in earlier attempts.
+function MacDownloadButton({
+  attr,
+  className = "inline-flex h-11 min-w-[230px] items-center justify-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90",
+}: {
+  attr: string;
+  className?: string;
+}) {
   const [arch, setArch] = useState<"arm64" | "x64">("arm64");
   const [downloading, setDownloading] = useState(false);
   useEffect(() => { setArch(detectMacArch()); }, []);
   const dl = MAC_DOWNLOADS[arch];
 
-  // Spinner-only handler — does NOT preventDefault. Lets the browser
-  // do its normal <a href download> thing (navigate to URL → see
-  // Content-Disposition: attachment → download). Earlier attempts to
-  // intercept with window.open / iframe / window.location.href all
-  // broke the download for various subtle reasons; the default link
-  // behaviour just works.
-  function handleDownloadClick() {
+  const handle = () => {
     setDownloading(true);
-    track("download_mac_clicked", { arch });
+    track("download_mac_clicked", { arch, source: attr });
     window.setTimeout(() => setDownloading(false), 5000);
-  }
+  };
+
+  return (
+    <a
+      href={dl.url}
+      download
+      onClick={handle}
+      data-attr={`${attr}-${arch}`}
+      aria-busy={downloading}
+      className={className}
+    >
+      {downloading ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Starting download…
+        </>
+      ) : (
+        <>
+          <Download className="h-4 w-4" /> Download for Mac
+          <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
+        </>
+      )}
+    </a>
+  );
+}
+
+function Hero() {
+  const [arch, setArch] = useState<"arm64" | "x64">("arm64");
+  useEffect(() => { setArch(detectMacArch()); }, []);
+  const dl = MAC_DOWNLOADS[arch];
 
   return (
     <section className="relative overflow-hidden bg-background">
@@ -175,26 +210,7 @@ function Hero() {
           and answers questions or fills forms from it.</span>
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <a
-            href={dl.url}
-            download
-            onClick={handleDownloadClick}
-            data-attr={`cta-hero-download-mac-${arch}`}
-            aria-busy={downloading}
-            className="inline-flex h-11 min-w-[230px] items-center justify-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90"
-          >
-            {downloading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Starting download…
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4" /> Download for Mac
-                <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
-              </>
-            )}
-          </a>
+          <MacDownloadButton attr="cta-hero-download-mac" />
           <a
             href="#waitlist"
             data-attr="cta-hero-waitlist"
@@ -2742,37 +2758,38 @@ const PRICING_TIERS: PricingTier[] = [
     id: "pro",
     name: "Pro",
     price: "$9",
-    cadence: "/month, or $79/year",
-    blurb: "Heavy users — daily Q&A, weekly form-fills, multi-vault.",
+    cadence: "/month, or $99/year · launching soon",
+    blurb: "Pro is coming. Join the waitlist now and we'll lock in $9/month for life — even after public pricing goes up.",
     features: [
+      "Founding-member price: $9/month locked forever",
       "Unlimited documents, questions, and form-fills",
-      "Multi-vault support (e.g. you + business + family)",
+      "Multi-vault support (you + business + family)",
       "Premium local models (Qwen3-VL, larger context)",
-      "Priority bug-fix queue",
       "Early access to side panel + vision OCR",
-      "Everything in Free",
+      "Priority bug-fix queue · everything in Free",
     ],
-    cta: "Start with Pro",
+    cta: "Reserve the $9 price",
     ctaHref: "#waitlist",
     highlight: true,
+    badge: "Coming soon",
   },
   {
     id: "lifetime",
     name: "Lifetime",
-    price: "$179",
+    price: "$499",
     cadence: "once · capped at 200 buyers",
-    blurb: "Show HN day-of supporters. Lock in everything forever.",
+    blurb: "Show HN day-of supporters. Lock in everything forever. Reserve a seat now — first 200 waitlist members at launch get priority access.",
     features: [
       "All Pro features, for life",
       "Founder Discord — direct line to the team",
       "Name in the credits screen (opt-in)",
       "First crack at every new feature",
       "Free upgrades — no surprise tier splits",
-      "Counter visible below; honest cap",
+      "Capped at 200 seats; honest counter at launch",
     ],
-    cta: "Grab a lifetime seat",
+    cta: "Reserve a lifetime seat",
     ctaHref: "#waitlist",
-    badge: "Launch only",
+    badge: "Coming soon",
   },
 ];
 
@@ -2781,7 +2798,11 @@ function Pricing() {
     <section id="pricing" className="border-t border-border bg-background">
       <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
         <SectionEyebrow>Pricing</SectionEyebrow>
-        <SectionTitle>Free forever for personal use. Pro for everything else.</SectionTitle>
+        <SectionTitle>
+          Free forever for personal use.
+          <br />
+          Pro for everything else.
+        </SectionTitle>
         <p className="mt-4 max-w-[680px] text-[14.5px] leading-relaxed text-muted-foreground">
           We don't bill by document, by token, or by entity. The model
           runs on your machine — your CPU is the bottleneck, not our
@@ -2831,16 +2852,28 @@ function PricingCard({ t }: { t: PricingTier }) {
           </li>
         ))}
       </ul>
-      <a
-        href={t.ctaHref}
-        className={`mt-6 inline-flex h-10 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
-          t.highlight
-            ? "bg-foreground text-background hover:bg-foreground/90"
-            : "border border-border bg-background hover:bg-accent"
-        }`}
-      >
-        {t.cta}
-      </a>
+      {/* Free tier uses the real download button (same behaviour as
+          the hero — arch detection, spinner, DMG link). Pro and
+          Lifetime are coming-soon → plain anchor to the waitlist. */}
+      {t.id === "free" ? (
+        <div className="mt-6">
+          <MacDownloadButton
+            attr="cta-pricing-download-mac"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-foreground text-[13px] font-semibold text-background transition-colors hover:bg-foreground/90"
+          />
+        </div>
+      ) : (
+        <a
+          href={t.ctaHref}
+          className={`mt-6 inline-flex h-10 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
+            t.highlight
+              ? "bg-foreground text-background hover:bg-foreground/90"
+              : "border border-border bg-background hover:bg-accent"
+          }`}
+        >
+          {t.cta}
+        </a>
+      )}
     </div>
   );
 }
