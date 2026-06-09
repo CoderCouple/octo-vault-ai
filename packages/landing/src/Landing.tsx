@@ -43,6 +43,7 @@ export function Landing() {
       <HotkeySpotlight />       {/* #6 Global hotkey ⌘⌥O */}
       <FloatingShortcutSpotlight /> {/* #7 Floating edge shortcut */}
       <Comparison />
+      <Pricing />
       <Faq />
       <Cta />
       <Footer />
@@ -53,7 +54,7 @@ export function Landing() {
 const NAV = [
   { label: "How it works", href: "#how" },
   { label: "Features",     href: "#features" },
-  { label: "Verify",       href: "#verify" },
+  { label: "Pricing",      href: "#pricing" },
   { label: "FAQ",          href: "#faq" },
   { label: "Report a Bug", href: "/bug-report" },
 ];
@@ -163,15 +164,15 @@ function Hero() {
           <span className="font-mono text-[10.5px]">github.com/CoderCouple/octo-vault-ai</span>
           <ArrowRight className="h-3 w-3 opacity-50 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
         </a>
-        <h1 className="mx-auto max-w-[820px] font-serif text-[34px] leading-[1.02] tracking-[-0.02em] md:text-[60px]">
-          Your documents.
+        <h1 className="mx-auto max-w-[860px] font-serif text-[34px] leading-[1.02] tracking-[-0.02em] md:text-[60px]">
+          Your private AI <span className="italic">paperwork vault</span>.
           <br />
-          Your <span className="italic">knowledge graph</span>.
+          Ask anything. Fill anything. Locally.
         </h1>
-        <p className="mx-auto mt-7 max-w-[620px] text-[15.5px] leading-relaxed text-muted-foreground md:text-[17.5px]">
-          OctoVault AI reads every PDF, image, and email on your device, links
-          every fact to its source, and turns it all into a queryable graph
-          that never leaves your laptop.
+        <p className="mx-auto mt-7 max-w-[680px] text-[15.5px] leading-relaxed text-muted-foreground md:text-[17.5px]">
+          NotebookLM uploads to Google. ChatGPT uploads to OpenAI. Obsidian
+          doesn't act on your docs. <span className="text-foreground font-medium">OctoVault keeps your paperwork on disk
+          and answers questions or fills forms from it.</span>
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
@@ -2632,15 +2633,19 @@ function FloatingShortcutWidget() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 type Cell = boolean | "partial" | "soon";
-const COMPARISON_ROWS: ReadonlyArray<readonly [string, Cell, Cell, Cell]> = [
-  ["Documents stay on device",          true,  false,     true],
-  ["Multi-entity (you + family)",       true,  false,     "partial"],
-  ["AI chat with source citations",     true,  true,      false],
-  ["Knowledge-graph view",              true,  false,     false],
-  ["One-click web form-fill",           "soon", "partial", false],
-  ["Chrome side panel",                 "soon", true,      false],
-  ["Encrypted local vault",             true,  false,     true],
-  ["Works fully offline",               true,  false,     true],
+// Columns: OctoVault · NotebookLM · ChatGPT (with file upload) ·
+// Obsidian-AI plugins · Filliny (form-fill extension). Honest reads —
+// don't snark; let the threat-model + capability mix tell the story.
+const COMPARISON_ROWS: ReadonlyArray<readonly [string, Cell, Cell, Cell, Cell, Cell]> = [
+  ["Documents stay on your machine",       true,  false,    false,   true,     true],
+  ["Reads your personal documents",        true,  true,     true,    "partial",false],
+  ["Answers questions with citations",     true,  true,     true,    "partial",false],
+  ["Fills web forms from your docs",       "soon",false,    false,   false,    true],
+  ["Knowledge-graph view (sources)",       true,  false,    false,   false,    false],
+  ["Multi-entity (you + family)",          true,  false,    false,   false,    "partial"],
+  ["Conflict detection",                   true,  false,    false,   false,    false],
+  ["Free tier",                            true,  true,     true,    true,     "partial"],
+  ["Works fully offline",                  true,  false,    false,   true,     false],
 ];
 
 function Comparison() {
@@ -2649,23 +2654,32 @@ function Comparison() {
       <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
         <SectionEyebrow>Versus the alternatives</SectionEyebrow>
         <SectionTitle>What you get, what you don't have to give up.</SectionTitle>
-        <div className="mt-12 overflow-hidden rounded-2xl border border-border">
-          <table className="w-full text-sm">
+        <p className="mt-4 max-w-[680px] text-[14.5px] leading-relaxed text-muted-foreground">
+          Most tools either read your docs or fill your forms.
+          Most tools either ship your docs to a server or refuse to act
+          on them. OctoVault is the one that does both, on disk.
+        </p>
+        <div className="mt-12 overflow-x-auto rounded-2xl border border-border">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b border-border bg-card text-[11px] uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border bg-card text-[10.5px] uppercase tracking-wider text-muted-foreground">
                 <th className="p-4 text-left"></th>
-                <th className="p-4 text-left">OctoVault AI</th>
-                <th className="p-4 text-left">Cloud doc AI</th>
-                <th className="p-4 text-left">Password manager</th>
+                <th className="p-4 text-left text-foreground">OctoVault</th>
+                <th className="p-4 text-left">NotebookLM</th>
+                <th className="p-4 text-left">ChatGPT (files)</th>
+                <th className="p-4 text-left">Obsidian + AI</th>
+                <th className="p-4 text-left">Filliny</th>
               </tr>
             </thead>
             <tbody>
-              {COMPARISON_ROWS.map(([label, a, b, c]) => (
+              {COMPARISON_ROWS.map(([label, a, b, c, d, e]) => (
                 <tr key={label} className="border-b border-border last:border-0">
                   <td className="p-4 text-[13.5px]">{label}</td>
                   <CompCell v={a} />
                   <CompCell v={b} />
                   <CompCell v={c} />
+                  <CompCell v={d} />
+                  <CompCell v={e} />
                 </tr>
               ))}
             </tbody>
@@ -2684,6 +2698,150 @@ function CompCell({ v }: { v: Cell }) {
        : v === "soon" ? <span className="inline-block rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Soon</span>
        : <span className="text-[11px] uppercase tracking-wider text-muted-foreground">partial</span>}
     </td>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Pricing — three tiers. Free is generous on purpose; Pro is the
+// daily-use upgrade; the Lifetime deal is the Show-HN-day evangelism
+// incentive, capped to keep it credible.
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface PricingTier {
+  id: "free" | "pro" | "lifetime";
+  name: string;
+  price: string;
+  cadence: string;
+  blurb: string;
+  features: string[];
+  cta: string;
+  ctaHref: string;
+  highlight?: boolean;
+  badge?: string;
+}
+
+const PRICING_TIERS: PricingTier[] = [
+  {
+    id: "free",
+    name: "Free",
+    price: "$0",
+    cadence: "forever",
+    blurb: "Personal use. The whole product, with sensible limits.",
+    features: [
+      "Up to 200 documents in your vault",
+      "50 chat questions per day",
+      "15 form-fills per month (when extension ships)",
+      "All local models (qwen3:8b, nomic-embed-text)",
+      "Full knowledge-graph view + conflict resolution",
+      "Encrypted local vault (SQLCipher)",
+    ],
+    cta: "Download for Mac",
+    ctaHref: "#hero",
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: "$9",
+    cadence: "/month, or $79/year",
+    blurb: "Heavy users — daily Q&A, weekly form-fills, multi-vault.",
+    features: [
+      "Unlimited documents, questions, and form-fills",
+      "Multi-vault support (e.g. you + business + family)",
+      "Premium local models (Qwen3-VL, larger context)",
+      "Priority bug-fix queue",
+      "Early access to side panel + vision OCR",
+      "Everything in Free",
+    ],
+    cta: "Start with Pro",
+    ctaHref: "#waitlist",
+    highlight: true,
+  },
+  {
+    id: "lifetime",
+    name: "Lifetime",
+    price: "$179",
+    cadence: "once · capped at 200 buyers",
+    blurb: "Show HN day-of supporters. Lock in everything forever.",
+    features: [
+      "All Pro features, for life",
+      "Founder Discord — direct line to the team",
+      "Name in the credits screen (opt-in)",
+      "First crack at every new feature",
+      "Free upgrades — no surprise tier splits",
+      "Counter visible below; honest cap",
+    ],
+    cta: "Grab a lifetime seat",
+    ctaHref: "#waitlist",
+    badge: "Launch only",
+  },
+];
+
+function Pricing() {
+  return (
+    <section id="pricing" className="border-t border-border bg-background">
+      <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
+        <SectionEyebrow>Pricing</SectionEyebrow>
+        <SectionTitle>Free forever for personal use. Pro for everything else.</SectionTitle>
+        <p className="mt-4 max-w-[680px] text-[14.5px] leading-relaxed text-muted-foreground">
+          We don't bill by document, by token, or by entity. The model
+          runs on your machine — your CPU is the bottleneck, not our
+          balance sheet. Limits exist only where infrastructure does
+          (server-side anything is future Pro territory).
+        </p>
+        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+          {PRICING_TIERS.map((t) => (
+            <PricingCard key={t.id} t={t} />
+          ))}
+        </div>
+        <p className="mt-8 text-center text-[12px] text-muted-foreground">
+          Prices in USD · no card required for Free · 30-day refund on Pro and Lifetime
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function PricingCard({ t }: { t: PricingTier }) {
+  return (
+    <div
+      className={`flex flex-col rounded-2xl border p-6 ${
+        t.highlight
+          ? "border-foreground bg-card shadow-[0_24px_70px_-30px_rgba(0,0,0,0.45)]"
+          : "border-border bg-card/40"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-[18px] font-semibold tracking-tight">{t.name}</h3>
+        {t.badge && (
+          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t.badge}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="text-[36px] font-bold tracking-tight">{t.price}</span>
+        <span className="text-[12px] text-muted-foreground">{t.cadence}</span>
+      </div>
+      <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">{t.blurb}</p>
+      <ul className="mt-5 space-y-2 text-[13px]">
+        {t.features.map((f) => (
+          <li key={f} className="flex items-start gap-2">
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" />
+            <span className="leading-relaxed">{f}</span>
+          </li>
+        ))}
+      </ul>
+      <a
+        href={t.ctaHref}
+        className={`mt-6 inline-flex h-10 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
+          t.highlight
+            ? "bg-foreground text-background hover:bg-foreground/90"
+            : "border border-border bg-background hover:bg-accent"
+        }`}
+      >
+        {t.cta}
+      </a>
+    </div>
   );
 }
 

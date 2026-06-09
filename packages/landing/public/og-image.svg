@@ -29,24 +29,22 @@
 
   <!-- Wordmark + tagline -->
   <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" fill="#fafafa">
-    <text x="328" y="295" font-size="76" font-weight="700" letter-spacing="-0.02em">OctoVault AI</text>
-    <text x="330" y="350" font-size="30" font-weight="500" fill="#d4d4d4" letter-spacing="-0.005em">
-      Your private, on-device document AI
+    <text x="328" y="275" font-size="60" font-weight="700" letter-spacing="-0.02em">OctoVault</text>
+    <text x="330" y="332" font-size="32" font-weight="500" fill="#fafafa" letter-spacing="-0.005em">
+      Your private AI paperwork vault.
     </text>
-    <text x="330" y="392" font-size="20" font-weight="400" fill="#a3a3a3">
-      Local knowledge graph for personal documents — chat with your vault, nothing leaves your device
+    <text x="330" y="372" font-size="32" font-weight="500" fill="#d4d4d4" letter-spacing="-0.005em">
+      Ask anything. Fill anything. Locally.
     </text>
   </g>
 
-  <!-- Feature row -->
-  <g font-family="ui-monospace, SFMono-Regular, monospace" fill="#737373" font-size="18">
-    <text x="100" y="540">EXTRACT</text>
-    <text x="240" y="540" fill="#525252">·</text>
-    <text x="260" y="540">GRAPH</text>
-    <text x="370" y="540" fill="#525252">·</text>
-    <text x="390" y="540">CHAT</text>
-    <text x="480" y="540" fill="#525252">·</text>
-    <text x="500" y="540">FILL FORMS (SOON)</text>
+  <!-- Differentiation row — the threat model in one line -->
+  <g font-family="ui-monospace, SFMono-Regular, monospace" fill="#737373" font-size="15">
+    <text x="100" y="540">NOTEBOOKLM → GOOGLE</text>
+    <text x="335" y="540" fill="#525252">·</text>
+    <text x="355" y="540">CHATGPT → OPENAI</text>
+    <text x="560" y="540">·</text>
+    <text x="580" y="540" fill="#fafafa">OCTOVAULT → ON YOUR DISK</text>
   </g>
 
   <!-- Bottom-right URL -->
