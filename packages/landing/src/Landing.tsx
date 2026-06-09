@@ -259,17 +259,17 @@ function Hero() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // HeroDemo — animated browser + side panel + web form, cycles through phases:
-//   0: empty   1: import   2: extract   3: ask   4: fill
+//   0: import   1: extract   2: graph   3: ask   4: fill
 // ──────────────────────────────────────────────────────────────────────────────
 
-const HERO_PHASE_DURATIONS = [2800, 3200, 3600, 4400, 4200];
+const HERO_PHASE_DURATIONS = [3200, 3600, 4200, 4400, 4200];
 
 const HERO_PHASES = [
-  { label: "Empty vault",   detail: "No documents yet" },
-  { label: "Drop docs",     detail: "Drag in passport, license, utility bill" },
-  { label: "Extract facts", detail: "Facts populate with source counts and conflict markers" },
-  { label: "Ask anything",  detail: "Chat with your vault — answers cite the source documents" },
-  { label: "Fill the form", detail: "Click ⬛ Fill — every field maps from the graph" },
+  { label: "Drop docs",              detail: "Drag in passport, license, utility bill" },
+  { label: "Extract facts",          detail: "Facts populate with source counts and conflict markers" },
+  { label: "Build knowledge graph",  detail: "Every fact carries its source — documents link to the facts they prove" },
+  { label: "Ask anything",           detail: "Chat with your vault — answers cite the source documents" },
+  { label: "Fill the form",          detail: "Coming soon — Chrome side panel will match every field from the graph", comingSoon: true },
 ];
 
 function HeroDemo() {
@@ -300,10 +300,11 @@ function HeroDemo() {
             {`0${phase + 1}/0${HERO_PHASES.length}`}
           </div>
         </div>
-        {/* Body: side panel full-width during empty/import/extract/ask
-            phases — the browser form only appears for the "Fill the
-            form" phase. Keeps the eye on what's actually happening. */}
-        <div className={`grid min-h-[440px] ${phase === 4 ? "grid-cols-[1.4fr,1fr]" : "grid-cols-1"}`}>
+        {/* Body: side panel full-width unless we're in the fill
+            phase. Height is constant (480px) so the hero box itself
+            doesn't jump between phases — only what's inside the
+            right column changes. */}
+        <div className={`grid h-[480px] ${phase === 4 ? "grid-cols-[1.4fr,1fr]" : "grid-cols-1"}`}>
           {phase === 4 && <BrowserPane phase={phase} />}
           <SidePanelPane phase={phase} />
         </div>
@@ -335,6 +336,13 @@ function HeroDemo() {
                 {i + 1}
               </span>
               {p.label}
+              {p.comingSoon && (
+                <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wider ${
+                  isActive ? "bg-background/15 text-background" : "bg-foreground/5 text-muted-foreground"
+                }`}>
+                  Soon
+                </span>
+              )}
             </button>
           );
         })}
@@ -355,8 +363,9 @@ const DEMO_FIELDS: Array<{ label: string; key: string; value: string; fillsAt: n
 ];
 
 function BrowserPane({ phase }: { phase: number }) {
-  // Phase 4: fill fields one by one. (Was phase 3; "Ask anything"
-  // got inserted as phase 3 so fill now runs on phase 4.)
+  // BrowserPane is only mounted during the fill phase (4), so
+  // there's no need for per-phase placeholders — the form always
+  // shows when this component is on screen.
   const [filledCount, setFilledCount] = useState(0);
   useEffect(() => {
     if (phase !== 4) { setFilledCount(0); return; }
@@ -366,48 +375,6 @@ function BrowserPane({ phase }: { phase: number }) {
     return () => clearInterval(id);
   }, [phase]);
 
-  // Per-phase placeholder copy for the browser pane. The form itself
-  // is only rendered in phase 4 ("Fill the form"). Earlier phases
-  // show a calmer "this is your browser" surface so the eye stays
-  // on the side panel where the action is.
-  const placeholder = (
-    <div className="flex h-full flex-col items-center justify-center text-center">
-      <FileText className="h-6 w-6 text-muted-foreground/60" strokeWidth={1.4} />
-      {phase === 0 && (
-        <>
-          <p className="mt-3 text-[12px] font-medium">Open any web form</p>
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
-            OctoVault watches every page in the side panel.
-          </p>
-        </>
-      )}
-      {phase === 1 && (
-        <>
-          <p className="mt-3 text-[12px] font-medium">Adding documents…</p>
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
-            Watch the side panel — every doc you import lands here.
-          </p>
-        </>
-      )}
-      {phase === 2 && (
-        <>
-          <p className="mt-3 text-[12px] font-medium">Facts being extracted</p>
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
-            Each fact links back to the document it came from.
-          </p>
-        </>
-      )}
-      {phase === 3 && (
-        <>
-          <p className="mt-3 text-[12px] font-medium">Ask anything</p>
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
-            Chat with your vault — answers cite the source documents.
-          </p>
-        </>
-      )}
-    </div>
-  );
-
   return (
     <div className="border-r border-border bg-background p-5">
       {phase === 4 ? (
@@ -416,6 +383,9 @@ function BrowserPane({ phase }: { phase: number }) {
             <FileText className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Visa application
+            </span>
+            <span className="rounded-full border border-border bg-card px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Soon
             </span>
             {filledCount > 0 && (
               <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground/5 px-2 py-0.5 text-[10px] font-medium text-foreground">
@@ -452,9 +422,7 @@ function BrowserPane({ phase }: { phase: number }) {
             Submit
           </button>
         </>
-      ) : (
-        placeholder
-      )}
+      ) : null}
     </div>
   );
 }
@@ -484,19 +452,29 @@ const DEMO_ASK = {
 };
 
 function SidePanelPane({ phase }: { phase: number }) {
-  // Phase-1 progress
-  const [imported, setImported] = useState(0);
+  // Phase-0 drop animation. Sequence of 6 steps (350ms each):
+  //   step 0: cursor at source[0]
+  //   step 1: cursor at target[0] — doc 0 lands in the panel
+  //   step 2: cursor at source[1]
+  //   step 3: cursor at target[1] — doc 1 lands
+  //   step 4: cursor at source[2]
+  //   step 5: cursor at target[2] — doc 2 lands
+  //   step 6+: idle, all docs landed, cursor hidden
+  const [dropStep, setDropStep] = useState(0);
   useEffect(() => {
-    if (phase !== 1) { setImported(0); return; }
-    const id = setInterval(() => setImported((n) => Math.min(n + 1, DEMO_DOCS.length)), 700);
+    if (phase !== 0) { setDropStep(0); return; }
+    setDropStep(0);
+    const id = setInterval(() => {
+      setDropStep((s) => (s >= 7 ? s : s + 1));
+    }, 350);
     return () => clearInterval(id);
   }, [phase]);
 
-  // Phase-2 fact reveal
+  // Phase-1 fact reveal.
   const [factCount, setFactCount] = useState(0);
   useEffect(() => {
-    if (phase < 2) { setFactCount(0); return; }
-    if (phase === 2) {
+    if (phase < 1) { setFactCount(0); return; }
+    if (phase === 1) {
       const id = setInterval(() => setFactCount((n) => Math.min(n + 1, DEMO_FACTS.length)), 420);
       return () => clearInterval(id);
     }
@@ -536,8 +514,27 @@ function SidePanelPane({ phase }: { phase: number }) {
     return () => { if (qTimer) window.clearInterval(qTimer); if (aTimer) window.clearInterval(aTimer); };
   }, [phase]);
 
-  const docsToShow = phase === 0 ? 0 : phase === 1 ? imported : DEMO_DOCS.length;
-  const factsToShow = phase < 2 ? 0 : factCount;
+  // Phase-2 graph build: 0 → 1 progress driver. Nodes and edges
+  // fade in proportionally so the graph "draws itself" during the
+  // 4.2s allotted for the phase.
+  const [graphProgress, setGraphProgress] = useState(0);
+  useEffect(() => {
+    if (phase !== 2) { setGraphProgress(0); return; }
+    setGraphProgress(0);
+    const start = Date.now();
+    const duration = 3600;  // leave a small still-frame at the end of the phase
+    const id = window.setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / duration);
+      setGraphProgress(t);
+      if (t >= 1) window.clearInterval(id);
+    }, 30);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  // Phase 0 → derive dropped count from the drop step (1 dropped after
+  // step 1, 2 after step 3, 3 after step 5). Phases 1+ → show all docs.
+  const droppedCount = phase === 0 ? Math.floor((dropStep + 1) / 2) : DEMO_DOCS.length;
+  const factsToShow = phase < 1 ? 0 : factCount;
 
   return (
     <div className="flex flex-col bg-card">
@@ -551,14 +548,17 @@ function SidePanelPane({ phase }: { phase: number }) {
           <WifiOff className="h-2.5 w-2.5" /> Local
         </span>
       </div>
-      {/* Tabs — highlight the tab that the CURRENT phase is about so
-          the user's eye lands on the right feature.
-          0/1 → Docs · 2 → Facts · 3 → Chat · 4 → Docs (fill source) */}
+      {/* Tabs — same order as the phase steps so the active tab moves
+          left-to-right as the demo progresses:
+          0 Drop docs → Docs · 1 Extract → Facts · 2 Build graph → Graph ·
+          3 Ask → Chat · 4 Fill → Docs (panel shows the facts being filled). */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
-        {["Chat", "Docs", "Facts", "Conflicts"].map((t) => {
+        {["Docs", "Facts", "Graph", "Chat"].map((t) => {
           const activeTab =
             phase === 3 ? "Chat"
-            : phase === 2 ? "Facts"
+            : phase === 2 ? "Graph"
+            : phase === 1 ? "Facts"
+            : phase === 4 ? "Facts"
             : "Docs";
           const active = t === activeTab;
           return (
@@ -578,25 +578,9 @@ function SidePanelPane({ phase }: { phase: number }) {
           time and forcing the eye to scan for what just changed. */}
       <div className="flex-1 space-y-3 overflow-hidden p-3">
         {phase === 0 && (
-          <div className="flex h-full flex-col items-center justify-center rounded-md border border-dashed border-border p-6 text-center">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-            <p className="mt-2 text-[12px] font-medium">No documents yet</p>
-            <p className="mt-1 text-[10.5px] text-muted-foreground">
-              Drag a passport, license, or bill to start.
-            </p>
-          </div>
+          <DropStage step={dropStep} droppedCount={droppedCount} />
         )}
         {phase === 1 && (
-          <div className="space-y-1.5">
-            <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Documents
-            </div>
-            {DEMO_DOCS.slice(0, docsToShow).map((d, i) => (
-              <DocPill key={d.name} doc={d} importing={i === docsToShow - 1} />
-            ))}
-          </div>
-        )}
-        {phase === 2 && (
           <div className="space-y-1.5">
             <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Extracted facts
@@ -606,6 +590,7 @@ function SidePanelPane({ phase }: { phase: number }) {
             ))}
           </div>
         )}
+        {phase === 2 && <GraphPanePhase progress={graphProgress} />}
         {phase === 3 && (
           <ChatPanePhase askTyped={askTyped} answerTyped={answerTyped} />
         )}
@@ -641,6 +626,259 @@ function SidePanelPane({ phase }: { phase: number }) {
 
 // Phase-3 chat panel — mirrors the Spotlight overlay's UX:
 // typed question, streamed answer, cited source pill.
+// Phase-3 graph panel — hand-drawn SVG mini graph showing the
+// three demo docs on the left and the five extracted facts on the
+// right, linked by edges. Nodes and edges fade in proportionally
+// to the progress driver (0..1) so the graph appears to "build
+// itself" during the phase. Tagline: every fact carries its source.
+const GRAPH_NODES = {
+  docs: [
+    { id: "passport",   label: "passport.pdf",     y: 30 },
+    { id: "license",    label: "license.jpg",      y: 110 },
+    { id: "utility",    label: "utility_bill.pdf", y: 190 },
+  ],
+  facts: [
+    { id: "name",  label: "Full Name",    value: "Aria Chen",   y: 12,  sources: ["passport","license","utility"] },
+    { id: "dob",   label: "Date of Birth",value: "1992-03-15",  y: 64,  sources: ["passport","license"] },
+    { id: "pp",    label: "Passport #",   value: "X1234567",    y: 116, sources: ["passport"] },
+    { id: "lic",   label: "License #",    value: "ABC-1234",    y: 168, sources: ["license"] },
+    { id: "addr",  label: "Address",      value: "221B Baker",  y: 220, sources: ["utility","license"], conflict: true },
+  ],
+};
+
+// Phase-0 drop stage. Two columns: source files on the left ("on
+// your computer"), Documents target on the right. A floating cursor
+// animates between source[i] and target[i] in sequence. As the
+// cursor "drops" each file, the source pill fades and the same file
+// appears in the Documents column.
+function DropStage({ step, droppedCount }: { step: number; droppedCount: number }) {
+  // 6-step sequence (350ms each):
+  //   even step = cursor hovering source[step/2]
+  //   odd step  = cursor over target[(step-1)/2]; doc just landed
+  // We use percentage-based coords so it works at any side-panel width.
+  const onSourceIdx = step < 6 && step % 2 === 0 ? step / 2 : -1;
+  const onTargetIdx = step < 6 && step % 2 === 1 ? (step - 1) / 2 : -1;
+  // y position by row index. Padding-top accounted for in containers.
+  const rowY = (i: number) => 16 + i * 56;  // px from top of stage
+  // Cursor position: source column anchor x=22%, target anchor x=72%.
+  let cursorX = 22;
+  let cursorY = rowY(0);
+  if (onSourceIdx >= 0) { cursorX = 22; cursorY = rowY(onSourceIdx); }
+  else if (onTargetIdx >= 0) { cursorX = 72; cursorY = rowY(onTargetIdx); }
+  else if (step >= 6) {
+    // Settled — park cursor in the bottom-right corner, will fade out.
+    cursorX = 88; cursorY = rowY(2) + 20;
+  }
+  const cursorVisible = step < 6;
+
+  return (
+    <div className="relative grid h-full grid-cols-2 gap-3 p-1" style={{ minHeight: 220 }}>
+      {/* Source column */}
+      <div>
+        <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          On your device
+        </div>
+        <div className="space-y-2">
+          {DEMO_DOCS.map((d, i) => {
+            const dropped = i < droppedCount;
+            return (
+              <div
+                key={d.name}
+                className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 transition-opacity duration-300"
+                style={{
+                  opacity: dropped ? 0.25 : 1,
+                  transform: onSourceIdx === i ? "scale(1.04)" : "scale(1)",
+                  transition: "opacity 300ms, transform 200ms",
+                }}
+              >
+                <FileText className="h-3 w-3 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[10.5px] font-medium">{d.name}</div>
+                  <div className="text-[8.5px] uppercase tracking-wider text-muted-foreground">{d.type}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {/* Target column */}
+      <div>
+        <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Documents
+        </div>
+        <div className="space-y-2">
+          {DEMO_DOCS.map((d, i) => {
+            const visible = i < droppedCount;
+            return (
+              <div
+                key={d.name}
+                className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5"
+                style={{
+                  opacity: visible ? 1 : 0,
+                  transform: visible ? "translateY(0)" : "translateY(-6px)",
+                  transition: "opacity 280ms ease-out, transform 280ms ease-out",
+                }}
+              >
+                <FileText className="h-3 w-3 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[10.5px] font-medium">{d.name}</div>
+                  <div className="text-[8.5px] uppercase tracking-wider text-muted-foreground">{d.type}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {/* Floating cursor */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: `${cursorX}%`,
+          top: `${cursorY}px`,
+          transform: "translate(-30%, -10%)",
+          transition: "left 330ms ease-in-out, top 330ms ease-in-out, opacity 200ms",
+          opacity: cursorVisible ? 1 : 0,
+          pointerEvents: "none",
+        }}
+      >
+        {/* Pointer + "grabbing" badge when over a source (even step) */}
+        <CursorIcon grabbing={onSourceIdx >= 0} />
+      </div>
+    </div>
+  );
+}
+
+function CursorIcon({ grabbing }: { grabbing: boolean }) {
+  return (
+    <div style={{ position: "relative", width: 22, height: 22 }}>
+      <svg viewBox="0 0 22 22" width="22" height="22" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }}>
+        <path
+          d="M3 2 L3 17 L7 13 L9.5 18 L12 17 L9.5 12 L15 12 Z"
+          fill="white"
+          stroke="black"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {grabbing && (
+        <div
+          style={{
+            position: "absolute", left: 14, top: 14,
+            width: 6, height: 6, borderRadius: "50%",
+            background: "#34d399",
+            border: "1px solid #0a0a0a",
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function GraphPanePhase({ progress }: { progress: number }) {
+  // Reveal order: docs fade in first (0..0.25), then facts + edges
+  // (0.25..0.85), then a brief still frame.
+  const docOpacity = (i: number): number => {
+    const start = i * 0.06;
+    const end = start + 0.18;
+    return Math.max(0, Math.min(1, (progress - start) / (end - start)));
+  };
+  const factOpacity = (i: number): number => {
+    const start = 0.28 + i * 0.08;
+    const end = start + 0.18;
+    return Math.max(0, Math.min(1, (progress - start) / (end - start)));
+  };
+
+  // SVG-space coords. Container is ~380px wide; SVG viewBox 380x270.
+  const docX = 14;
+  const docW = 124;
+  const factX = 218;
+  const factW = 148;
+  const docCenterX = docX + docW;          // edge anchor on doc right
+  const factCenterX = factX;               // edge anchor on fact left
+
+  return (
+    <div className="flex h-full flex-col items-center">
+      <div className="mb-1 w-full max-w-[460px] text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Knowledge graph
+      </div>
+      {/* Side panel is now fixed-width (~40% of 1200px hero ≈ 480px),
+          so the SVG can fill its container without ballooning. */}
+      <div className="flex w-full max-w-[460px] flex-1 items-center justify-center">
+        <svg viewBox="0 0 380 270" className="h-auto w-full" preserveAspectRatio="xMidYMid meet">
+          {/* Edges (drawn first so nodes overlap them) */}
+          {GRAPH_NODES.facts.map((fact, fi) =>
+            fact.sources.map((srcId) => {
+              const docIdx = GRAPH_NODES.docs.findIndex((d) => d.id === srcId);
+              if (docIdx < 0) return null;
+              const doc = GRAPH_NODES.docs[docIdx];
+              const docY = doc.y + 22;     // doc box center
+              const factY = fact.y + 14;
+              // Edge becomes visible only once both the doc AND the fact
+              // it points to have appeared.
+              const op = Math.min(docOpacity(docIdx), factOpacity(fi)) * 0.85;
+              return (
+                <path
+                  key={`${fact.id}-${srcId}`}
+                  d={`M ${docCenterX} ${docY} C ${docCenterX + 40} ${docY}, ${factCenterX - 40} ${factY}, ${factCenterX} ${factY}`}
+                  fill="none"
+                  stroke={fact.conflict ? "#a8a29e" : "currentColor"}
+                  strokeOpacity={op}
+                  strokeWidth={fact.conflict ? 1 : 1.2}
+                  strokeDasharray={fact.conflict ? "3 3" : undefined}
+                />
+              );
+            }),
+          )}
+          {/* Doc nodes (left column) */}
+          {GRAPH_NODES.docs.map((doc, i) => {
+            const op = docOpacity(i);
+            return (
+              <g key={doc.id} opacity={op}>
+                <rect x={docX} y={doc.y} width={docW} height={44} rx={6} fill="white" stroke="currentColor" strokeOpacity={0.25} strokeWidth={1} />
+                <text x={docX + 8} y={doc.y + 17} fontSize={9} fontFamily="ui-monospace, SFMono-Regular" fill="currentColor" opacity={0.55}>DOC</text>
+                <text x={docX + 8} y={doc.y + 33} fontSize={10.5} fontFamily="ui-sans-serif, system-ui" fontWeight={500} fill="currentColor">{doc.label}</text>
+              </g>
+            );
+          })}
+          {/* Fact nodes (right column) */}
+          {GRAPH_NODES.facts.map((fact, i) => {
+            const op = factOpacity(i);
+            return (
+              <g key={fact.id} opacity={op}>
+                <rect
+                  x={factX}
+                  y={fact.y}
+                  width={factW}
+                  height={32}
+                  rx={5}
+                  fill="white"
+                  stroke="currentColor"
+                  strokeOpacity={0.25}
+                  strokeWidth={1}
+                  strokeDasharray={fact.conflict ? "3 2" : undefined}
+                />
+                <text x={factX + 8} y={fact.y + 12} fontSize={8.5} fontFamily="ui-sans-serif, system-ui" fill="currentColor" opacity={0.55} textAnchor="start">
+                  {fact.label.toUpperCase()}
+                </text>
+                <text x={factX + 8} y={fact.y + 25} fontSize={10.5} fontFamily="ui-monospace, SFMono-Regular" fill="currentColor">
+                  {fact.value}
+                </text>
+                <text x={factX + factW - 8} y={fact.y + 12} fontSize={8.5} fontFamily="ui-sans-serif, system-ui" fill="currentColor" opacity={0.55} textAnchor="end">
+                  {fact.sources.length}×
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="mt-2 text-center text-[10.5px] italic text-muted-foreground" style={{ opacity: progress > 0.5 ? Math.min(1, (progress - 0.5) * 2) : 0 }}>
+        Every fact carries its source.
+      </div>
+    </div>
+  );
+}
+
 function ChatPanePhase({ askTyped, answerTyped }: { askTyped: number; answerTyped: number }) {
   const q = DEMO_ASK.question.slice(0, askTyped);
   const a = DEMO_ASK.answer.slice(0, answerTyped);
@@ -709,21 +947,6 @@ function ChatPanePhase({ askTyped, answerTyped }: { askTyped: number; answerType
   );
 }
 
-function DocPill({ doc, importing }: { doc: typeof DEMO_DOCS[number]; importing: boolean }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5">
-      <FileText className="h-3 w-3 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium">{doc.name}</div>
-        <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{doc.type}</div>
-      </div>
-      {importing && (
-        <span className="size-2 animate-pulse rounded-full bg-foreground/60" />
-      )}
-    </div>
-  );
-}
-
 function FactPill({ fact }: { fact: typeof DEMO_FACTS[number] }) {
   return (
     <div className={`rounded-md px-2 py-1 ${
@@ -774,8 +997,8 @@ const STEPS = [
   { n: "02", title: "Review the graph",
     body: "Every extracted fact is a node, linked to the document that produced it. Conflicts (differing addresses, red-flag DOBs) get flagged before anything else can use them.",
     Visual: StepGraphVisual },
-  { n: "03", title: "Chat or fill",
-    body: "Ask anything (\"when does Diego's passport expire?\") with cited answers. Or open the Chrome side panel on any web form and click ⬛ Fill.",
+  { n: "03", title: "Chat with your vault",
+    body: "Ask anything (\"when does Diego's passport expire?\") and get cited answers from your own documents. The Chrome side panel that auto-fills web forms is coming soon — join the waitlist.",
     Visual: StepFillVisual },
 ];
 
@@ -1728,49 +1951,52 @@ function ChromeExtensionSection() {
     <section id="chrome-extension" className="border-t border-border bg-card/40">
       <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
         <SectionEyebrow>Feature 04 · Chrome extension</SectionEyebrow>
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
+          Coming soon · join the waitlist
+        </div>
         <SectionTitle>
           Fill a real visa application. <span className="italic">In three seconds.</span>
         </SectionTitle>
         <p className="mt-4 max-w-[720px] text-[15px] leading-relaxed text-muted-foreground">
-          The OctoVault AI side panel docks beside any web page — visa
+          The OctoVault AI side panel will dock beside any web page — visa
           applications, tax intake forms, school enrollments, USCIS forms.
           Click <span className="font-mono">⬛ Fill this page</span> and every field
-          gets matched from your knowledge graph. Below is a real-feeling mock
-          of the US Department of State's DS-160 visa form. Try it.
+          gets matched from your knowledge graph. The interactive demo
+          below shows what the experience will feel like on the US
+          Department of State's DS-160 visa form once the extension ships.
         </p>
         {/* Interactive demo */}
         <div className="mt-10">
           <DS160FormDemo />
         </div>
-        {/* Below the demo: install / support / matcher explainer */}
+        {/* Coming-soon trio: waitlist CTA · what we're polishing ·
+            how the matcher will work. Install instructions are
+            removed until launch so we don't tell users to load an
+            unpacked dev build they'll have a bad time with. */}
         <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-3">
-          <ExtensionBlock title="Install in 60 seconds" icon={PanelRight}>
-            <ol className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
-              <li><span className="font-semibold text-foreground">1.</span> Open <span className="font-mono">chrome://extensions</span></li>
-              <li><span className="font-semibold text-foreground">2.</span> Toggle <span className="font-mono">Developer mode</span></li>
-              <li><span className="font-semibold text-foreground">3.</span> Load unpacked → <span className="font-mono">packages/extension/dist</span></li>
-              <li><span className="font-semibold text-foreground">4.</span> Pin the OctoVault AI icon · the panel opens on click</li>
-            </ol>
+          <ExtensionBlock title="Get early access" icon={PanelRight}>
+            <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+              The Chrome extension is in private beta. Drop your email
+              on the waitlist below and we'll ping you the moment the
+              Chrome Web Store listing goes live.
+            </p>
+            <a
+              href="#waitlist"
+              className="mt-3 inline-flex h-8 items-center justify-center rounded-md bg-foreground px-4 text-[12px] font-semibold text-background"
+            >
+              Join the waitlist
+            </a>
           </ExtensionBlock>
-          <ExtensionBlock title="Works in" icon={Check}>
-            <ul className="space-y-2 text-[12.5px]">
-              {[
-                ["Google Chrome", "≥ 114"],
-                ["Microsoft Edge", "≥ 114"],
-                ["Brave", "≥ 1.55"],
-                ["Arc", "≥ 1.20"],
-              ].map(([name, v]) => (
-                <li key={name} className="flex items-center justify-between">
-                  <span>{name}</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">{v}</span>
-                </li>
-              ))}
-              <li className="mt-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
-                Firefox: side panel API not yet supported.
-              </li>
+          <ExtensionBlock title="What we're polishing" icon={Check}>
+            <ul className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
+              <li>Detection across React-Aria, Material, Headless UI, Radix radios + selects</li>
+              <li>Composite fields (Y/M/D dates, multi-part phones, address blocks)</li>
+              <li>AI-drafted answers for open-ended textareas — review before submit</li>
+              <li>Multi-page session memory so intent + entity routing survive Next clicks</li>
             </ul>
           </ExtensionBlock>
-          <ExtensionBlock title="How the matcher works" icon={Sparkles}>
+          <ExtensionBlock title="How the matcher will work" icon={Sparkles}>
             <ol className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
               <li><span className="font-mono text-[11px] text-foreground">1.</span> HTML <span className="font-mono">autocomplete</span> attributes — instant</li>
               <li><span className="font-mono text-[11px] text-foreground">2.</span> Label / name / placeholder keyword match against the schema</li>
@@ -2405,14 +2631,14 @@ function FloatingShortcutWidget() {
 // Comparison table — adds multi-entity, citations, side panel rows
 // ──────────────────────────────────────────────────────────────────────────────
 
-type Cell = boolean | "partial";
+type Cell = boolean | "partial" | "soon";
 const COMPARISON_ROWS: ReadonlyArray<readonly [string, Cell, Cell, Cell]> = [
   ["Documents stay on device",          true,  false,     true],
   ["Multi-entity (you + family)",       true,  false,     "partial"],
   ["AI chat with source citations",     true,  true,      false],
   ["Knowledge-graph view",              true,  false,     false],
-  ["One-click web form-fill",           true,  "partial", false],
-  ["Chrome side panel",                 true,  true,      false],
+  ["One-click web form-fill",           "soon", "partial", false],
+  ["Chrome side panel",                 "soon", true,      false],
   ["Encrypted local vault",             true,  false,     true],
   ["Works fully offline",               true,  false,     true],
 ];
@@ -2455,6 +2681,7 @@ function CompCell({ v }: { v: Cell }) {
     <td className="p-4">
       {v === true ? <Check className="h-4 w-4" />
        : v === false ? <span className="text-muted-foreground">—</span>
+       : v === "soon" ? <span className="inline-block rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Soon</span>
        : <span className="text-[11px] uppercase tracking-wider text-muted-foreground">partial</span>}
     </td>
   );
