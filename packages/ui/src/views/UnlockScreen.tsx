@@ -16,7 +16,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
 
-export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
+export function UnlockScreen({ onUnlocked, onSkip }: { onUnlocked: () => void; onSkip?: () => void }) {
   const { host } = useAppContext();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,6 +89,21 @@ export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <p className={`text-center ${tx.muted}`}>
           Your vault is encrypted with this password. We can't recover it for you.
         </p>
+
+        {/* Dev-only skip. Renders when VaultGate decides to allow it
+            (localhost / file:// surface). Persists the choice so
+            reloads don't re-prompt. */}
+        {onSkip && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={onSkip}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Skip for now (dev)
+            </button>
+          </div>
+        )}
 
         {/* Last resort — forgot password. AlertDialog forces an explicit
             confirm because there's no undo: every document, entity, and

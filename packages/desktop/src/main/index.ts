@@ -2,7 +2,7 @@
 // over IPC so the renderer doesn't have to fight CORS, and applies
 // strict default security settings.
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, shell } from "electron";
 import http from "node:http";
 import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -100,16 +100,17 @@ const bridge = http.createServer((req, res) => {
       }
 
       switch (url) {
-        case "/health":    return send(res, req, 200, { ok: true, snapshotAt: cachedProfileAt });
-        case "/profile":   return send(res, req, 200, cachedProfile);
-        case "/documents": return send(res, req, 200, cachedDocs);
-        case "/entities":  return send(res, req, 200, cachedEntities);
-        // Direct-from-store endpoints. The renderer doesn't push these
-        // through bridge.publishSnapshot because embeddings are large
-        // (768-float vectors × N) and round-tripping them through IPC
-        // just to push them out over HTTP is wasteful. The bridge runs
-        // in the same process as the SQLCipher store, so we read
-        // directly. Empty array if the vault is locked.
+        case "/health":    return send(res, req, 200, { ok: true, snapshotAt: cachedProfileAt, open: vault.isOpen() });
+        // Source-of-truth endpoints — prefer the live SQLCipher store
+        // when the vault is open, fall back to the renderer-pushed
+        // snapshot when locked (so the read-only consumer can still
+        // see a coherent view between unlocks). This eliminates the
+        // stale-snapshot bug where the bridge said "empty vault"
+        // because no UI action had triggered bridge.publishSnapshot
+        // since the user unlocked.
+        case "/profile":       return send(res, req, 200, vault.isOpen() ? vault.store.getAllProfiles() : cachedProfile);
+        case "/documents":     return send(res, req, 200, vault.isOpen() ? vault.store.listDocuments() : cachedDocs);
+        case "/entities":      return send(res, req, 200, vault.isOpen() ? vault.store.listEntities() : cachedEntities);
         case "/embeddings":    return send(res, req, 200, vault.isOpen() ? vault.store.listEmbeddings() : []);
         case "/relationships": return send(res, req, 200, vault.isOpen() ? vault.store.listRelationships() : []);
         case "/events":        return send(res, req, 200, vault.isOpen() ? vault.store.listEvents() : []);
@@ -149,7 +150,40 @@ function createWindow() {
     },
   });
 
-  win.once("ready-to-show", () => win.show());
+  const reveal = (reason: string) => {
+    if (win.isDestroyed()) return;
+    // Belt-and-suspenders against macOS edge cases:
+    //  1. Force the activation policy back to "regular" so the dock
+    //     icon appears even if it was somehow suppressed.
+    //  2. Force the dock entry visible.
+    //  3. Re-center on the primary display (in case a stale
+    //     multi-monitor position left it off-screen).
+    //  4. Bounce the dock icon so the user notices it appearing.
+    if (process.platform === "darwin") {
+      app.setActivationPolicy?.("regular");
+      void app.dock?.show?.();
+    }
+    const primary = screen.getPrimaryDisplay();
+    const { width: dw, height: dh, x: dx, y: dy } = primary.workArea;
+    const w = Math.min(1280, dw - 40);
+    const h = Math.min(820, dh - 80);
+    win.setBounds({ x: dx + Math.floor((dw - w) / 2), y: dy + Math.floor((dh - h) / 2), width: w, height: h });
+    win.show();
+    win.focus();
+    win.setAlwaysOnTop(true);
+    setTimeout(() => { if (!win.isDestroyed()) win.setAlwaysOnTop(false); }, 1500);
+    if (process.platform === "darwin") {
+      try { app.dock?.bounce?.("informational"); } catch { /* ignore */ }
+    }
+    const b = win.getBounds();
+    console.log(`[main] reveal (${reason}) bounds=${JSON.stringify(b)} visible=${win.isVisible()} dock.isVisible=${(app.dock as { isVisible?: () => boolean })?.isVisible?.() ?? "?"}`);
+  };
+
+  win.once("ready-to-show", () => reveal("ready-to-show"));
+  setTimeout(() => { if (!win.isDestroyed() && !win.isVisible()) reveal("safety-net"); }, 4000);
+  // Extra safety on macOS: force a dock-click handler so the user
+  // always has a way back.
+  app.on("activate", () => reveal("activate"));
 
   // External links go to the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -730,6 +764,17 @@ void app.whenReady().then(() => {
   // Default to launching at login. The user can flip this off in
   // Settings — that pushes launch.setOpenAtLogin via IPC.
   applyLoginItem(true);
+  // Brand the dock icon. In dev mode the binary is stock Electron
+  // so the dock would otherwise show the generic Electron diamond.
+  // In production builds electron-builder sets the icon via the
+  // bundle; this is just for dev parity.
+  if (process.platform === "darwin") {
+    try {
+      const iconPath = join(__dirname, "../../build/icon.png");
+      const img = nativeImage.createFromPath(iconPath);
+      if (!img.isEmpty()) app.dock?.setIcon?.(img);
+    } catch (e) { console.warn("[main] dev dock icon set failed:", e); }
+  }
   createWindow();
   createShortcutWindow();
   app.on("activate", () => {

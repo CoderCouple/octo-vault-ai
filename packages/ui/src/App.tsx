@@ -72,8 +72,38 @@ function VaultGate({ children }: { children: React.ReactNode }) {
   const { host } = useAppContext();
   const [needsUnlock, setNeedsUnlock] = useState<boolean | null>(null);
 
+  // Same dev escape hatch as Onboarding — includes chrome-extension://
+  // so the side panel's unlock prompt is dismissable while iterating.
+  const isDev = typeof location !== "undefined" && (
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.protocol === "file:" ||
+    location.protocol === "chrome-extension:"
+  );
+
   useEffect(() => {
     void (async () => {
+      if (localStorage.getItem("octovault.skipUnlock") === "1") {
+        setNeedsUnlock(false);
+        return;
+      }
+      // When a read-only source (e.g. the desktop bridge) is
+      // available, the extension doesn't need its own vault unlocked
+      // to function — it's just viewing data via the read-only
+      // adapter. Settings + auth blob lookups remain plaintext on
+      // the host's own storage so the source-switcher pill still
+      // works if the user wants to flip later.
+      if (host.sources) {
+        for (const src of host.sources) {
+          if (!src.readOnly) continue;
+          try {
+            if (!src.isAvailable || (await src.isAvailable())) {
+              setNeedsUnlock(false);
+              return;
+            }
+          } catch { /* probe failed; ignore */ }
+        }
+      }
       const exists = await host.vaultExists();
       if (!exists) { setNeedsUnlock(false); return; }
       setNeedsUnlock(!host.isVaultUnlocked());
@@ -81,7 +111,15 @@ function VaultGate({ children }: { children: React.ReactNode }) {
   }, [host]);
 
   if (needsUnlock === null) return null;
-  if (needsUnlock) return <UnlockScreen onUnlocked={() => setNeedsUnlock(false)} />;
+  if (needsUnlock) return (
+    <UnlockScreen
+      onUnlocked={() => setNeedsUnlock(false)}
+      onSkip={isDev ? () => {
+        try { localStorage.setItem("octovault.skipUnlock", "1"); } catch { /* ignore */ }
+        setNeedsUnlock(false);
+      } : undefined}
+    />
+  );
   return <>{children}</>;
 }
 
@@ -99,12 +137,34 @@ function PopupLayout() {
   }, [host]);
 
   // Mandatory onboarding: show until the Self entity has a real name + email.
-  const { entities: ctxEntities } = useAppContext();
+  // Two bypasses:
+  //   - Dev escape hatch via localStorage.octovault.skipOnboarding.
+  //   - When a read-only source (desktop bridge) is available, the user
+  //     has already onboarded on the canonical surface — don't double-
+  //     onboard them in the extension.
+  const { entities: ctxEntities, host: gateHost } = useAppContext();
   useEffect(() => {
-    const self = ctxEntities.find((e) => e.id === "self");
-    const customized = self && self.name !== "Self" && (self.email?.length ?? 0) > 0;
-    setShowOnboarding(!customized);
-  }, [ctxEntities]);
+    if (localStorage.getItem("octovault.skipOnboarding") === "1") {
+      setShowOnboarding(false);
+      return;
+    }
+    void (async () => {
+      if (gateHost.sources) {
+        for (const src of gateHost.sources) {
+          if (!src.readOnly) continue;
+          try {
+            if (!src.isAvailable || (await src.isAvailable())) {
+              setShowOnboarding(false);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+      }
+      const self = ctxEntities.find((e) => e.id === "self");
+      const customized = self && self.name !== "Self" && (self.email?.length ?? 0) > 0;
+      setShowOnboarding(!customized);
+    })();
+  }, [ctxEntities, gateHost]);
 
   return (
     <div className="flex h-screen w-full flex-col overflow-x-hidden">
@@ -184,12 +244,34 @@ function FullLayout() {
   }, [host]);
 
   // Mandatory onboarding: show until the Self entity has a real name + email.
-  const { entities: ctxEntities } = useAppContext();
+  // Two bypasses:
+  //   - Dev escape hatch via localStorage.octovault.skipOnboarding.
+  //   - When a read-only source (desktop bridge) is available, the user
+  //     has already onboarded on the canonical surface — don't double-
+  //     onboard them in the extension.
+  const { entities: ctxEntities, host: gateHost } = useAppContext();
   useEffect(() => {
-    const self = ctxEntities.find((e) => e.id === "self");
-    const customized = self && self.name !== "Self" && (self.email?.length ?? 0) > 0;
-    setShowOnboarding(!customized);
-  }, [ctxEntities]);
+    if (localStorage.getItem("octovault.skipOnboarding") === "1") {
+      setShowOnboarding(false);
+      return;
+    }
+    void (async () => {
+      if (gateHost.sources) {
+        for (const src of gateHost.sources) {
+          if (!src.readOnly) continue;
+          try {
+            if (!src.isAvailable || (await src.isAvailable())) {
+              setShowOnboarding(false);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+      }
+      const self = ctxEntities.find((e) => e.id === "self");
+      const customized = self && self.name !== "Self" && (self.email?.length ?? 0) > 0;
+      setShowOnboarding(!customized);
+    })();
+  }, [ctxEntities, gateHost]);
 
   const activeNav = NAV.find((n) => n.id === view)!;
 

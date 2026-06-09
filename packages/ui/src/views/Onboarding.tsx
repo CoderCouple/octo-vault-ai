@@ -163,13 +163,35 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
   function prev() { if (!isFirst) setStepIndex((i) => i - 1); }
   function close() { setOpen(false); onClose(); }
 
-  // Mandatory wizard — must be completed to use the app. No dismiss.
+  // In production this is a mandatory wizard. In dev — local builds,
+  // hot-reloaded sessions, unpacked extensions — let developers
+  // dismiss it so they can iterate without re-running onboarding on
+  // every reload. chrome-extension:// is included because that's the
+  // side panel surface; we trust the wizard's gating elsewhere
+  // (read-only source detection in App.tsx).
+  const isDev = typeof location !== "undefined" && (
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.protocol === "file:" ||
+    location.protocol === "chrome-extension:"
+  );
+  function dismissForNow() {
+    try { localStorage.setItem("octovault.skipOnboarding", "1"); } catch { /* ignore */ }
+    close();
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (o) setOpen(true); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (o) setOpen(true);
+        else if (isDev) dismissForNow();
+      }}
+    >
       <DialogContent
-        className="max-w-lg p-0 [&>button.absolute]:hidden"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        className={`max-w-lg p-0 ${isDev ? "" : "[&>button.absolute]:hidden"}`}
+        onPointerDownOutside={(e) => { if (!isDev) e.preventDefault(); }}
+        onEscapeKeyDown={(e) => { if (!isDev) e.preventDefault(); }}
       >
         <Header step={step} />
 

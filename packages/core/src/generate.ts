@@ -98,7 +98,7 @@ OPEN FIELDS NEEDING A DRAFT:
 ${fieldBlocks}
 
 Rules:
-- Free-text drafts (type="textarea" or "text"): write a first-person, concise paragraph the user can edit before submitting. Stick to facts in the intent + profile. Never invent specifics the intent doesn't mention. Stay within the character limit. Match the form's register (government form → formal; product feedback → casual).
+- Free-text drafts (type="textarea" or "text"): write a first-person, concise, ready-to-submit paragraph. Use the intent + profile facts verbatim where they apply. Do NOT emit bracket placeholders like "[start date]", "[your name]", "[city]" — if a specific detail is unknown, write around it naturally ("I will be staying with family" not "I will be staying with [host]"). Stay within the character limit. Match the form's register (government form → formal; product feedback → casual).
 - Choice drafts (type="radio" or "select"): pick exactly one of the supplied options that best fits the intent + profile. The draft string must equal one of the option strings character-for-character (whitespace-normalized).
 - If the intent gives you no basis for the field, return an empty string and "confidence": "low" — the HUD will mark it for the user.
 - Never include explanations, prefixes, quotes around the answer, or "Draft:" / "Answer:" labels. Output just the value.

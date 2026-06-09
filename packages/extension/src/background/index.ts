@@ -20,7 +20,15 @@ async function fetchEntities(): Promise<Entity[]> {
       if (Array.isArray(data) && data.length > 0) return data;
     }
   } catch { /* fall through to local */ }
-  return indexedDbAdapter.listEntities();
+  // listEntities throws "Vault is locked" when the extension's own
+  // crypto isn't loaded. Treat as empty rather than bubbling — the
+  // form-fill UI surfaces 'no profile data' more usefully than a
+  // raw locked-vault error.
+  try { return await indexedDbAdapter.listEntities(); }
+  catch (e) {
+    if (e instanceof Error && e.message.includes("Vault is locked")) return [];
+    throw e;
+  }
 }
 
 const DESKTOP_OLLAMA_PROXY = "http://127.0.0.1:53117/ollama";
@@ -71,9 +79,21 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
       // Multi-entity matching (Phase C) + LLM-text augmentation (Phase E1).
       // Order: enrich → merge → match.
       const remote = await fetchProfileFromBridge() as VaultProfile | null;
-      const vault: VaultProfile = remote && Object.keys(remote).length > 0
-        ? remote
-        : await indexedDbAdapter.getAllProfiles();
+      // Local IDB fallback throws "Vault is locked" when the extension's
+      // own vault isn't unlocked. Catch that — we still want to attempt
+      // a fill using whatever the desktop bridge can give us, and even
+      // when both are empty an empty vault is better than a thrown error
+      // surfacing as "Error: Vault is locked" in the launcher toast.
+      let vault: VaultProfile = remote ?? {};
+      if (!remote || Object.keys(remote).length === 0) {
+        try { vault = await indexedDbAdapter.getAllProfiles(); }
+        catch (e) {
+          if (e instanceof Error && e.message.includes("Vault is locked")) {
+            console.warn("[OctoVault] local vault locked; using bridge-only data");
+            vault = remote ?? {};
+          } else throw e;
+        }
+      }
       const entities = await fetchEntities();
       const source = remote ? "desktop" : "extension";
       const llm = await cfg();

@@ -259,15 +259,16 @@ function Hero() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // HeroDemo — animated browser + side panel + web form, cycles through phases:
-//   0: empty   1: import   2: extract   3: fill
+//   0: empty   1: import   2: extract   3: ask   4: fill
 // ──────────────────────────────────────────────────────────────────────────────
 
-const HERO_PHASE_DURATIONS = [2800, 3200, 3600, 4200];
+const HERO_PHASE_DURATIONS = [2800, 3200, 3600, 4400, 4200];
 
 const HERO_PHASES = [
   { label: "Empty vault",   detail: "No documents yet" },
   { label: "Drop docs",     detail: "Drag in passport, license, utility bill" },
   { label: "Extract facts", detail: "Facts populate with source counts and conflict markers" },
+  { label: "Ask anything",  detail: "Chat with your vault — answers cite the source documents" },
   { label: "Fill the form", detail: "Click ⬛ Fill — every field maps from the graph" },
 ];
 
@@ -299,9 +300,11 @@ function HeroDemo() {
             {`0${phase + 1}/0${HERO_PHASES.length}`}
           </div>
         </div>
-        {/* Body: form on the left, side panel on the right */}
-        <div className="grid min-h-[440px] grid-cols-[1.4fr,1fr]">
-          <BrowserPane phase={phase} />
+        {/* Body: side panel full-width during empty/import/extract/ask
+            phases — the browser form only appears for the "Fill the
+            form" phase. Keeps the eye on what's actually happening. */}
+        <div className={`grid min-h-[440px] ${phase === 4 ? "grid-cols-[1.4fr,1fr]" : "grid-cols-1"}`}>
+          {phase === 4 && <BrowserPane phase={phase} />}
           <SidePanelPane phase={phase} />
         </div>
       </div>
@@ -344,65 +347,114 @@ function HeroDemo() {
 }
 
 const DEMO_FIELDS: Array<{ label: string; key: string; value: string; fillsAt: number }> = [
-  { label: "First name",   key: "first",    value: "Sunil",                  fillsAt: 0 },
-  { label: "Last name",    key: "last",     value: "Tiwari",                 fillsAt: 1 },
-  { label: "Date of birth",key: "dob",      value: "1987-08-28",             fillsAt: 2 },
+  { label: "First name",   key: "first",    value: "Aria",                  fillsAt: 0 },
+  { label: "Last name",    key: "last",     value: "Chen",                 fillsAt: 1 },
+  { label: "Date of birth",key: "dob",      value: "1992-03-15",             fillsAt: 2 },
   { label: "Passport #",   key: "pp",       value: "X1234567",               fillsAt: 3 },
   { label: "Address",      key: "addr",     value: "221B Baker St, London",  fillsAt: 4 },
 ];
 
 function BrowserPane({ phase }: { phase: number }) {
-  // Phase 3: fill fields one by one.
+  // Phase 4: fill fields one by one. (Was phase 3; "Ask anything"
+  // got inserted as phase 3 so fill now runs on phase 4.)
   const [filledCount, setFilledCount] = useState(0);
   useEffect(() => {
-    if (phase !== 3) { setFilledCount(0); return; }
+    if (phase !== 4) { setFilledCount(0); return; }
     const id = setInterval(() => {
       setFilledCount((n) => (n >= DEMO_FIELDS.length ? n : n + 1));
     }, 480);
     return () => clearInterval(id);
   }, [phase]);
 
+  // Per-phase placeholder copy for the browser pane. The form itself
+  // is only rendered in phase 4 ("Fill the form"). Earlier phases
+  // show a calmer "this is your browser" surface so the eye stays
+  // on the side panel where the action is.
+  const placeholder = (
+    <div className="flex h-full flex-col items-center justify-center text-center">
+      <FileText className="h-6 w-6 text-muted-foreground/60" strokeWidth={1.4} />
+      {phase === 0 && (
+        <>
+          <p className="mt-3 text-[12px] font-medium">Open any web form</p>
+          <p className="mt-1 text-[10.5px] text-muted-foreground">
+            OctoVault watches every page in the side panel.
+          </p>
+        </>
+      )}
+      {phase === 1 && (
+        <>
+          <p className="mt-3 text-[12px] font-medium">Adding documents…</p>
+          <p className="mt-1 text-[10.5px] text-muted-foreground">
+            Watch the side panel — every doc you import lands here.
+          </p>
+        </>
+      )}
+      {phase === 2 && (
+        <>
+          <p className="mt-3 text-[12px] font-medium">Facts being extracted</p>
+          <p className="mt-1 text-[10.5px] text-muted-foreground">
+            Each fact links back to the document it came from.
+          </p>
+        </>
+      )}
+      {phase === 3 && (
+        <>
+          <p className="mt-3 text-[12px] font-medium">Ask anything</p>
+          <p className="mt-1 text-[10.5px] text-muted-foreground">
+            Chat with your vault — answers cite the source documents.
+          </p>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="border-r border-border bg-background p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <FileText className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Visa application
-        </span>
-        {phase === 3 && filledCount > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground/5 px-2 py-0.5 text-[10px] font-medium text-foreground">
-            <Sparkles className="h-2.5 w-2.5" /> {filledCount}/{DEMO_FIELDS.length} filled
-          </span>
-        )}
-      </div>
-      <div className="space-y-2.5">
-        {DEMO_FIELDS.map((f, i) => {
-          const filled = phase === 3 && i < filledCount;
-          return (
-            <div key={f.key}>
-              <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                {f.label}
-              </label>
-              <div className={`mt-0.5 flex h-8 items-center rounded-md border px-2.5 font-mono text-[12px] transition-all ${
-                filled ? "border-foreground/60 bg-foreground/5 text-foreground" : "border-border bg-card text-muted-foreground"
-              }`}>
-                {filled ? f.value : ""}
-                {filled && <Check className="ml-auto h-3 w-3" />}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <button
-        disabled={phase !== 3 || filledCount < DEMO_FIELDS.length}
-        className={`mt-5 inline-flex h-9 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
-          phase === 3 && filledCount === DEMO_FIELDS.length
-            ? "bg-foreground text-background"
-            : "border border-border bg-card text-muted-foreground"
-        }`}
-      >
-        Submit
-      </button>
+      {phase === 4 ? (
+        <>
+          <div className="mb-3 flex items-center gap-2">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
+            <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Visa application
+            </span>
+            {filledCount > 0 && (
+              <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground/5 px-2 py-0.5 text-[10px] font-medium text-foreground">
+                <Sparkles className="h-2.5 w-2.5" /> {filledCount}/{DEMO_FIELDS.length} filled
+              </span>
+            )}
+          </div>
+          <div className="space-y-2.5">
+            {DEMO_FIELDS.map((f, i) => {
+              const filled = i < filledCount;
+              return (
+                <div key={f.key}>
+                  <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {f.label}
+                  </label>
+                  <div className={`mt-0.5 flex h-8 items-center rounded-md border px-2.5 font-mono text-[12px] transition-all ${
+                    filled ? "border-foreground/60 bg-foreground/5 text-foreground" : "border-border bg-card text-muted-foreground"
+                  }`}>
+                    {filled ? f.value : ""}
+                    {filled && <Check className="ml-auto h-3 w-3" />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            disabled={filledCount < DEMO_FIELDS.length}
+            className={`mt-5 inline-flex h-9 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
+              filledCount === DEMO_FIELDS.length
+                ? "bg-foreground text-background"
+                : "border border-border bg-card text-muted-foreground"
+            }`}
+          >
+            Submit
+          </button>
+        </>
+      ) : (
+        placeholder
+      )}
     </div>
   );
 }
@@ -414,12 +466,22 @@ const DEMO_DOCS = [
 ];
 
 const DEMO_FACTS = [
-  { label: "Full Name",   v: "Sunil Tiwari",       src: 3, t: 200 },
-  { label: "Date of Birth",v: "1987-08-28",        src: 2, t: 600 },
+  { label: "Full Name",   v: "Aria Chen",       src: 3, t: 200 },
+  { label: "Date of Birth",v: "1992-03-15",        src: 2, t: 600 },
   { label: "Passport #",  v: "X1234567",           src: 1, t: 1000 },
   { label: "License #",   v: "ABC-1234",           src: 1, t: 1400 },
   { label: "Address",     v: "221B Baker St",      src: 3, t: 1800, conflict: true },
 ];
+
+// Demo Q&A for the "Ask anything" phase — same shape as the
+// Spotlight overlay (question, streamed answer, cited sources).
+const DEMO_ASK = {
+  question: "When does my passport expire?",
+  answer: "Your passport (X1234567) expires on March 15, 2032 [1]. It was issued March 16, 2022 in San Francisco.",
+  citations: [
+    { n: 1, doc: "passport.pdf", field: "Expiry Date", excerpt: "Date of Expiry: 15 MAR 2032" },
+  ],
+};
 
 function SidePanelPane({ phase }: { phase: number }) {
   // Phase-1 progress
@@ -441,6 +503,39 @@ function SidePanelPane({ phase }: { phase: number }) {
     setFactCount(DEMO_FACTS.length);
   }, [phase]);
 
+  // Phase-3 ask: type the question, then stream the answer character
+  // by character — mirrors the real Spotlight overlay's UX.
+  const [askTyped, setAskTyped] = useState(0);
+  const [answerTyped, setAnswerTyped] = useState(0);
+  useEffect(() => {
+    if (phase !== 3) { setAskTyped(0); setAnswerTyped(0); return; }
+    setAskTyped(0); setAnswerTyped(0);
+    let qTimer: number | null = null;
+    let aTimer: number | null = null;
+    qTimer = window.setInterval(() => {
+      setAskTyped((n) => {
+        if (n >= DEMO_ASK.question.length) {
+          if (qTimer) window.clearInterval(qTimer);
+          // Start streaming the answer 350ms after question finishes
+          window.setTimeout(() => {
+            aTimer = window.setInterval(() => {
+              setAnswerTyped((m) => {
+                if (m >= DEMO_ASK.answer.length) {
+                  if (aTimer) window.clearInterval(aTimer);
+                  return m;
+                }
+                return m + 2; // ~2 chars per tick — feels like streaming
+              });
+            }, 22);
+          }, 350);
+          return n;
+        }
+        return n + 1;
+      });
+    }, 40);
+    return () => { if (qTimer) window.clearInterval(qTimer); if (aTimer) window.clearInterval(aTimer); };
+  }, [phase]);
+
   const docsToShow = phase === 0 ? 0 : phase === 1 ? imported : DEMO_DOCS.length;
   const factsToShow = phase < 2 ? 0 : factCount;
 
@@ -456,17 +551,33 @@ function SidePanelPane({ phase }: { phase: number }) {
           <WifiOff className="h-2.5 w-2.5" /> Local
         </span>
       </div>
-      {/* Tabs */}
+      {/* Tabs — highlight the tab that the CURRENT phase is about so
+          the user's eye lands on the right feature.
+          0/1 → Docs · 2 → Facts · 3 → Chat · 4 → Docs (fill source) */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
-        {["Docs", "Facts", "Conflicts"].map((t) => (
-          <div key={t} className="rounded-md px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground first:bg-foreground first:text-background">
-            {t}
-          </div>
-        ))}
+        {["Chat", "Docs", "Facts", "Conflicts"].map((t) => {
+          const activeTab =
+            phase === 3 ? "Chat"
+            : phase === 2 ? "Facts"
+            : "Docs";
+          const active = t === activeTab;
+          return (
+            <div
+              key={t}
+              className={`rounded-md px-2 py-0.5 text-[10.5px] font-medium ${
+                active ? "bg-foreground text-background" : "text-muted-foreground"
+              }`}
+            >
+              {t}
+            </div>
+          );
+        })}
       </div>
-      {/* Body */}
+      {/* Body — only render the section the current phase is *about*.
+          Stops the panel from piling up Docs+Facts+Chat at the same
+          time and forcing the eye to scan for what just changed. */}
       <div className="flex-1 space-y-3 overflow-hidden p-3">
-        {phase === 0 ? (
+        {phase === 0 && (
           <div className="flex h-full flex-col items-center justify-center rounded-md border border-dashed border-border p-6 text-center">
             <FileText className="h-5 w-5 text-muted-foreground" />
             <p className="mt-2 text-[12px] font-medium">No documents yet</p>
@@ -474,40 +585,126 @@ function SidePanelPane({ phase }: { phase: number }) {
               Drag a passport, license, or bill to start.
             </p>
           </div>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Documents
-              </div>
-              {DEMO_DOCS.slice(0, docsToShow).map((d, i) => (
-                <DocPill key={d.name} doc={d} importing={phase === 1 && i === docsToShow - 1} />
-              ))}
+        )}
+        {phase === 1 && (
+          <div className="space-y-1.5">
+            <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Documents
             </div>
-            {phase >= 2 && (
-              <div className="space-y-1.5">
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Extracted facts
-                </div>
-                {DEMO_FACTS.slice(0, factsToShow).map((f) => (
-                  <FactPill key={f.label} fact={f} />
-                ))}
-              </div>
-            )}
-          </>
+            {DEMO_DOCS.slice(0, docsToShow).map((d, i) => (
+              <DocPill key={d.name} doc={d} importing={i === docsToShow - 1} />
+            ))}
+          </div>
+        )}
+        {phase === 2 && (
+          <div className="space-y-1.5">
+            <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Extracted facts
+            </div>
+            {DEMO_FACTS.slice(0, factsToShow).map((f) => (
+              <FactPill key={f.label} fact={f} />
+            ))}
+          </div>
+        )}
+        {phase === 3 && (
+          <ChatPanePhase askTyped={askTyped} answerTyped={answerTyped} />
+        )}
+        {phase === 4 && (
+          // During the form-fill phase, the side panel acts as the
+          // visible "source of truth" — facts ready to flow into the
+          // form on the left. Render them statically (no further
+          // animation; the form is doing the moving here).
+          <div className="space-y-1.5">
+            <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Facts ready to fill
+            </div>
+            {DEMO_FACTS.map((f) => (
+              <FactPill key={f.label} fact={f} />
+            ))}
+          </div>
         )}
       </div>
-      {/* Fill button */}
-      <div className="border-t border-border p-3">
-        <button
-          className={`inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition-all ${
-            phase === 3 ? "bg-foreground text-background" : "border border-border bg-background text-muted-foreground"
-          }`}
-        >
-          {phase === 3 ? <Sparkles className="h-3 w-3" /> : <OctoMark className="h-3 w-3" />}
-          {phase === 3 ? "Filling form…" : "Fill this page"}
-        </button>
+      {/* Fill button — only appears in phase 4 when the form is
+          present. Prior phases have no form to fill against, so
+          showing the affordance would be misleading. */}
+      {phase === 4 && (
+        <div className="border-t border-border p-3">
+          <button className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-foreground text-[12px] font-semibold text-background transition-all">
+            <Sparkles className="h-3 w-3" />
+            Filling form…
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Phase-3 chat panel — mirrors the Spotlight overlay's UX:
+// typed question, streamed answer, cited source pill.
+function ChatPanePhase({ askTyped, answerTyped }: { askTyped: number; answerTyped: number }) {
+  const q = DEMO_ASK.question.slice(0, askTyped);
+  const a = DEMO_ASK.answer.slice(0, answerTyped);
+  const showCursorOnQ = askTyped < DEMO_ASK.question.length;
+  const showCursorOnA = !showCursorOnQ && answerTyped < DEMO_ASK.answer.length;
+  // Tokenize the streamed answer to render citation [1] as a pill
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  const re = /\[(\d+)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(a)) !== null) {
+    if (m.index > last) parts.push(a.slice(last, m.index));
+    parts.push(
+      <span key={m.index} className="mx-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-border bg-card px-1 align-baseline text-[9px] font-medium">
+        {m[1]}
+      </span>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < a.length) parts.push(a.slice(last));
+
+  return (
+    <div className="flex h-full flex-col gap-2">
+      {/* User question bubble */}
+      <div className="rounded-md border border-border bg-background px-2.5 py-2">
+        <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">You</div>
+        <div className="mt-0.5 text-[11.5px]">
+          {q}
+          {showCursorOnQ && <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-foreground align-text-bottom" />}
+        </div>
       </div>
+      {/* Assistant answer (only after question completes) */}
+      {askTyped >= DEMO_ASK.question.length && (
+        <div className="rounded-md border border-border bg-card px-2.5 py-2">
+          <div className="flex items-center gap-1.5">
+            <OctoMark className="h-3 w-3" />
+            <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">OctoVault</div>
+          </div>
+          <div className="mt-0.5 text-[11.5px] leading-relaxed">
+            {parts}
+            {showCursorOnA && <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-foreground align-text-bottom" />}
+          </div>
+          {/* Citation pill list — appears once answer finishes */}
+          {!showCursorOnA && !showCursorOnQ && (
+            <div className="mt-2 space-y-1">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Sources</div>
+              {DEMO_ASK.citations.map((c) => (
+                <div key={c.n} className="flex items-start gap-1.5 rounded-md border border-border bg-background px-1.5 py-1">
+                  <span className="inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-border bg-card px-1 text-[9px] font-medium">
+                    {c.n}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 text-[10px] font-medium">
+                      <FileText className="h-2.5 w-2.5 shrink-0" />
+                      <span className="truncate">{c.doc}</span>
+                    </div>
+                    <div className="mt-0.5 line-clamp-2 text-[9.5px] italic text-muted-foreground">"{c.excerpt}"</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -578,7 +775,7 @@ const STEPS = [
     body: "Every extracted fact is a node, linked to the document that produced it. Conflicts (differing addresses, red-flag DOBs) get flagged before anything else can use them.",
     Visual: StepGraphVisual },
   { n: "03", title: "Chat or fill",
-    body: "Ask anything (\"when does Payal's passport expire?\") with cited answers. Or open the Chrome side panel on any web form and click ⬛ Fill.",
+    body: "Ask anything (\"when does Diego's passport expire?\") with cited answers. Or open the Chrome side panel on any web form and click ⬛ Fill.",
     Visual: StepFillVisual },
 ];
 
@@ -783,17 +980,17 @@ const N = {
   docPassport:  { id: "doc-passport",  type: "doc", data: { name: "passport.pdf",       kind: "passport" } },
   docLicense:   { id: "doc-license",   type: "doc", data: { name: "license.pdf",        kind: "drivers_license" } },
   docUtility:   { id: "doc-utility",   type: "doc", data: { name: "utility_bill.jpg",   kind: "utility_bill", ocr: true } },
-  docPayalPp:   { id: "doc-payal-pp",  type: "doc", data: { name: "payal_passport.pdf", kind: "passport" } },
+  docDiegoPp:   { id: "doc-diego-pp",  type: "doc", data: { name: "diego_passport.pdf", kind: "passport" } },
   entSelf:      { id: "ent-self",   type: "entity", data: { initials: "ME", name: "Self",  rel: "self",   factCount: 4 } },
-  entPayal:     { id: "ent-payal",  type: "entity", data: { initials: "PT", name: "Payal", rel: "spouse", factCount: 2 } },
+  entDiego:     { id: "ent-diego",  type: "entity", data: { initials: "DR", name: "Diego", rel: "spouse", factCount: 2 } },
   // Fact nodes carry the entity initials inline — same as the in-app
   // FactNode, which shows a small avatar bubble inside the card.
-  factName:     { id: "fact-name",      type: "fact", data: { entityInitials: "ME", label: "Full Name",   value: "Sunil Tiwari",  sources: 2 } },
-  factDob:      { id: "fact-dob",       type: "fact", data: { entityInitials: "ME", label: "DOB",         value: "1987-08-28",    sources: 2 } },
+  factName:     { id: "fact-name",      type: "fact", data: { entityInitials: "ME", label: "Full Name",   value: "Aria Chen",  sources: 2 } },
+  factDob:      { id: "fact-dob",       type: "fact", data: { entityInitials: "ME", label: "DOB",         value: "1992-03-15",    sources: 2 } },
   factAddr:     { id: "fact-addr",      type: "fact", data: { entityInitials: "ME", label: "Address",     value: "221B Baker St", sources: 2, conflict: "stale" } },
   factPassport: { id: "fact-passport",  type: "fact", data: { entityInitials: "ME", label: "Passport #",  value: "●●●●●●1234",    sources: 1 } },
-  factPayalName:{ id: "fact-payal-name",type: "fact", data: { entityInitials: "PT", label: "Full Name",   value: "Payal Tiwari",  sources: 1 } },
-  factPayalPp:  { id: "fact-payal-pp",  type: "fact", data: { entityInitials: "PT", label: "Passport #",  value: "●●●●●●7788",    sources: 1 } },
+  factDiegoName:{ id: "fact-diego-name",type: "fact", data: { entityInitials: "DR", label: "Full Name",   value: "Diego Reyes",  sources: 1 } },
+  factDiegoPp:  { id: "fact-diego-pp",  type: "fact", data: { entityInitials: "DR", label: "Passport #",  value: "●●●●●●7788",    sources: 1 } },
 } as const;
 
 function place(node: { id: string; type: string; data: Record<string, unknown> }, x: number, y: number): Node {
@@ -818,7 +1015,7 @@ function fEdge(id: string, source: string, target: string, opts: { weight?: "hig
 
 function spouseEdge(): Edge {
   return {
-    id: "e-self-payal", source: "ent-self", target: "ent-payal",
+    id: "e-self-diego", source: "ent-self", target: "ent-diego",
     type: "smoothstep", label: "spouse · derived",
     labelStyle: { fontSize: 9, fontStyle: "italic", fill: "hsl(var(--muted-foreground))" },
     labelBgStyle: { fill: "hsl(var(--card))" },
@@ -836,13 +1033,13 @@ function buildSourceGraph(): { nodes: Node[]; edges: Edge[] } {
     place(N.docPassport, 40, 40),
     place(N.docLicense,  40, 136),
     place(N.docUtility,  40, 232),
-    place(N.docPayalPp,  40, 328),
+    place(N.docDiegoPp,  40, 328),
     place(N.factName,        700, 40),
     place(N.factDob,         700, 112),
     place(N.factAddr,        700, 184),
     place(N.factPassport,    700, 256),
-    place(N.factPayalName,   700, 328),
-    place(N.factPayalPp,     700, 400),
+    place(N.factDiegoName,   700, 328),
+    place(N.factDiegoPp,     700, 400),
   ];
   const edges: Edge[] = [
     // passport.pdf is the authoritative source for full name, DOB, passport #
@@ -855,9 +1052,9 @@ function buildSourceGraph(): { nodes: Node[]; edges: Edge[] } {
     fEdge("e-lic-addr",    "doc-license",  "fact-addr",     { dashed: true }),
     // utility bill asserts address (canonical)
     fEdge("e-util-addr",   "doc-utility",  "fact-addr",     { weight: "high" }),
-    // payal passport asserts both her facts
-    fEdge("e-payalpp-name","doc-payal-pp", "fact-payal-name", { weight: "high" }),
-    fEdge("e-payalpp-pp",  "doc-payal-pp", "fact-payal-pp",   { weight: "high" }),
+    // diego passport asserts both her facts
+    fEdge("e-diegopp-name","doc-diego-pp", "fact-diego-name", { weight: "high" }),
+    fEdge("e-diegopp-pp",  "doc-diego-pp", "fact-diego-pp",   { weight: "high" }),
   ];
   return { nodes, edges };
 }
@@ -873,25 +1070,25 @@ function buildEntityGraph(): { nodes: Node[]; edges: Edge[] } {
   const ROW_H      = 72;
 
   const xSelf  = 60;
-  const xPayal = xSelf + COL_WIDTH;
+  const xDiego = xSelf + COL_WIDTH;
 
   const nodes: Node[] = [
     place(N.entSelf,  xSelf,  ENTITY_TOP),
-    place(N.entPayal, xPayal, ENTITY_TOP),
+    place(N.entDiego, xDiego, ENTITY_TOP),
     place(N.factName,     xSelf,  FACTS_TOP + ROW_H * 0),
     place(N.factDob,      xSelf,  FACTS_TOP + ROW_H * 1),
     place(N.factAddr,     xSelf,  FACTS_TOP + ROW_H * 2),
     place(N.factPassport, xSelf,  FACTS_TOP + ROW_H * 3),
-    place(N.factPayalName,xPayal, FACTS_TOP + ROW_H * 0),
-    place(N.factPayalPp,  xPayal, FACTS_TOP + ROW_H * 1),
+    place(N.factDiegoName,xDiego, FACTS_TOP + ROW_H * 0),
+    place(N.factDiegoPp,  xDiego, FACTS_TOP + ROW_H * 1),
   ];
   const edges: Edge[] = [
     fEdge("e-self-name",     "ent-self",  "fact-name",     { weight: "high" }),
     fEdge("e-self-dob",      "ent-self",  "fact-dob",      { weight: "high" }),
     fEdge("e-self-addr",     "ent-self",  "fact-addr",     { dashed: true }),
     fEdge("e-self-passport", "ent-self",  "fact-passport", { weight: "high" }),
-    fEdge("e-payal-name",    "ent-payal", "fact-payal-name", { weight: "high" }),
-    fEdge("e-payal-pp",      "ent-payal", "fact-payal-pp",   { weight: "high" }),
+    fEdge("e-diego-name",    "ent-diego", "fact-diego-name", { weight: "high" }),
+    fEdge("e-diego-pp",      "ent-diego", "fact-diego-pp",   { weight: "high" }),
     spouseEdge(),
   ];
   return { nodes, edges };
@@ -1130,8 +1327,8 @@ function ConflictsWidget() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const candidates: DemoCandidate[] = [
-    { id: "c1", value: "1987-08-28", source: "passport.pdf",  docKind: "passport",       confidence: "high" },
-    { id: "c2", value: "1989-08-28", source: "insurance.pdf", docKind: "insurance_card", confidence: "medium" },
+    { id: "c1", value: "1992-03-15", source: "passport.pdf",  docKind: "passport",       confidence: "high" },
+    { id: "c2", value: "1992-04-20", source: "insurance.pdf", docKind: "insurance_card", confidence: "medium" },
   ];
   const live = candidates.filter((c) => !dismissedIds.has(c.id));
   const canonical = live.find((c) => c.id === pinnedId) ?? live[0];
@@ -1311,12 +1508,12 @@ interface DemoQA {
 
 const QA_DEMO: DemoQA[] = [
   {
-    scope: "Payal",
+    scope: "Diego",
     q: "when does her passport expire?",
-    a: "Payal's passport expires on 2029-03-14 [1], issued 2019-03-14 [2].",
+    a: "Diego's passport expires on 2029-03-14 [1], issued 2019-03-14 [2].",
     sources: [
-      { n: 1, doc: "payal_passport.pdf", field: "Passport Expiry Date", excerpt: "Date of Expiry: 14 MAR 2029" },
-      { n: 2, doc: "payal_passport.pdf", field: "Passport Issue Date",  excerpt: "Date of Issue: 14 MAR 2019" },
+      { n: 1, doc: "diego_passport.pdf", field: "Passport Expiry Date", excerpt: "Date of Expiry: 14 MAR 2029" },
+      { n: 2, doc: "diego_passport.pdf", field: "Passport Issue Date",  excerpt: "Date of Issue: 14 MAR 2019" },
     ],
   },
   {
@@ -1328,10 +1525,10 @@ const QA_DEMO: DemoQA[] = [
   },
   {
     q: "who is in my family?",
-    a: "Your vault has 4 entities: Self [1], Payal [2] (spouse), Katha and Aarav (children). Spouse-of-spouse closure adds Payal's parents as your in-laws [3].",
+    a: "Your vault has 4 entities: Self [1], Diego [2] (spouse), Priya and Marcus (children). Spouse-of-spouse closure adds Diego's parents as your in-laws [3].",
     sources: [
-      { n: 1, doc: "passport.pdf",       field: "Entity",    excerpt: "TIWARI, SUNIL" },
-      { n: 2, doc: "payal_passport.pdf", field: "Entity",    excerpt: "TIWARI, PAYAL" },
+      { n: 1, doc: "passport.pdf",       field: "Entity",    excerpt: "CHEN, ARIA" },
+      { n: 2, doc: "diego_passport.pdf", field: "Entity",    excerpt: "REYES, DIEGO" },
       { n: 3, doc: "(derived edge)",     field: "Closure",   excerpt: "Spouse → parent → parent-in-law" },
     ],
   },
@@ -1496,8 +1693,8 @@ const DS160_SECTIONS: Array<{
   {
     title: "Personal Information",
     fields: [
-      { label: "Surnames",                              required: true, v: "TIWARI" },
-      { label: "Given Names",                           required: true, v: "SUNIL" },
+      { label: "Surnames",                              required: true, v: "CHEN" },
+      { label: "Given Names",                           required: true, v: "ARIA" },
       { label: "Sex",                                   required: true, v: "MALE" },
       { label: "Marital Status",                        required: true, v: "MARRIED" },
       { label: "Date of Birth",                         required: true, v: "28-AUG-1987" },
@@ -1519,7 +1716,7 @@ const DS160_SECTIONS: Array<{
       { label: "Street Address",                        required: true, v: "221B Baker St" },
       { label: "City",                                  required: true, v: "London" },
       { label: "Primary Phone Number",                  required: true, v: "+44 20 7224 3688" },
-      { label: "Email Address",                         required: true, v: "sunil@example.com" },
+      { label: "Email Address",                         required: true, v: "aria@example.com" },
     ],
   },
 ];

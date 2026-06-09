@@ -31,7 +31,20 @@ function collectCandidates(root: Document | ShadowRoot, sink: HTMLElement[]) {
   }
 }
 
+// Names we never want to fill. CAPTCHAs (Google reCAPTCHA, hCaptcha,
+// Cloudflare Turnstile) all use a hidden form-control that gets set
+// when the user solves the challenge — we MUST NOT fill or draft for
+// these. Same for honeypot fields commonly named "url", "website"
+// inside hidden wrappers.
+const NEVER_FILL_NAME_RE = /\b(g-recaptcha-response|h-captcha-response|cf-turnstile-response|recaptcha|captcha|honey?pot)\b/i;
+
 function isFillableType(el: HTMLElement): boolean {
+  // Hard-exclude captchas regardless of element shape.
+  const name = el.getAttribute("name") ?? "";
+  if (name && NEVER_FILL_NAME_RE.test(name)) return false;
+  const id = el.getAttribute("id") ?? "";
+  if (id && NEVER_FILL_NAME_RE.test(id)) return false;
+
   if (el instanceof HTMLInputElement) {
     const type = el.type;
     if (["hidden", "submit", "button", "reset", "image", "file", "password"].includes(type)) return false;
@@ -100,6 +113,105 @@ function detectFields() {
     });
   }
   return out;
+}
+
+// Phase F1+: radio-group collapse. Each <input type="radio"> in the
+// same `name` group represents one option of ONE logical question.
+// detectFields() returns each radio as a separate field, which leads
+// to 3+ identical drafts in the HUD when only one answer is needed.
+// This pass replaces the individual radios with a single synthetic
+// "choice" field whose options list is the radio labels and whose
+// question label is the enclosing fieldset legend / aria-labelledby /
+// preceding heading — not the option text. Filling a group fires the
+// underlying radio click via the existing pill UI in showHud().
+
+interface RadioGroup {
+  syntheticId: string;
+  field: DetectedField;
+  options: string[];                 // option label text in DOM order
+  parts: HTMLInputElement[];         // matched radios for click-to-fill
+}
+
+function findGroupLabel(els: HTMLInputElement[]): string {
+  // Walk up from any radio to the nearest fieldset or aria-labelled
+  // region; use its legend / aria-label as the group question. Falls
+  // back to the section helper (heading-based) when no labelled
+  // wrapper exists. All results go through cleanLabel().
+  for (const r of els) {
+    const fs = r.closest("fieldset");
+    if (fs) {
+      const legend = fs.querySelector(":scope > legend");
+      const txt = legend?.textContent?.trim();
+      if (txt) return cleanLabel(txt);
+    }
+    let parent: HTMLElement | null = r.parentElement;
+    while (parent) {
+      const role = parent.getAttribute("role");
+      const aria = parent.getAttribute("aria-label")?.trim();
+      if ((role === "radiogroup" || role === "group") && aria) return cleanLabel(aria);
+      const lb = parent.getAttribute("aria-labelledby");
+      if ((role === "radiogroup" || role === "group") && lb) {
+        const ref = parent.ownerDocument.getElementById(lb.split(/\s+/)[0]);
+        // Use directText so we get the heading's text *only*, not
+        // a concatenation of every option-button that follows.
+        const txt = ref ? directText(ref) || ref.textContent?.trim() : "";
+        if (txt) return cleanLabel(txt);
+      }
+      parent = parent.parentElement;
+    }
+  }
+  // Last resort: look for a heading or label-like sibling immediately
+  // before the radio group's nearest common ancestor. Use directText
+  // to avoid grabbing concatenated option content.
+  const common = els[0].parentElement;
+  if (common) {
+    let prev: Element | null = common.previousElementSibling;
+    while (prev) {
+      const tag = prev.tagName.toLowerCase();
+      if (["h1","h2","h3","h4","h5","h6","label","p","legend"].includes(tag)) {
+        const t = directText(prev) || prev.textContent?.trim() || "";
+        if (t) return cleanLabel(t);
+      }
+      prev = prev.previousElementSibling;
+    }
+  }
+  return cleanLabel(findSection(els[0])) || "Choice";
+}
+
+function detectRadioGroups(detected: { el: Fillable; field: DetectedField }[]): RadioGroup[] {
+  const byName = new Map<string, { el: HTMLInputElement; field: DetectedField }[]>();
+  for (const d of detected) {
+    if (!(d.el instanceof HTMLInputElement) || d.el.type !== "radio") continue;
+    const key = d.el.name || `__unnamed__${d.field.section ?? ""}`;
+    const arr = byName.get(key) ?? [];
+    arr.push({ el: d.el, field: d.field });
+    byName.set(key, arr);
+  }
+  const groups: RadioGroup[] = [];
+  let i = 0;
+  for (const [, members] of byName) {
+    // A single isolated radio is rare but real (a "yes" confirm).
+    // Still collapse it into a 1-option synthetic — keeps the matcher
+    // path uniform.
+    const els = members.map((m) => m.el);
+    const options = members.map((m) => m.field.label || m.el.value || "");
+    const syntheticId = `ov-rgroup-${i++}`;
+    groups.push({
+      syntheticId,
+      field: {
+        id: syntheticId,
+        type: "radio",
+        label: findGroupLabel(els),
+        name: els[0].name ?? "",
+        placeholder: "",
+        autocomplete: "",
+        section: members[0].field.section,
+      },
+      options,
+      parts: els,
+    });
+  }
+  return groups;
 }
 
 // Phase F1: composite-date detection.
@@ -190,6 +302,94 @@ function detectDateComposites(detected: { el: Fillable; field: DetectedField }[]
     });
   }
   return composites;
+}
+
+// Parse a date range out of free-text intent. Used to auto-fill
+// composite date fields ("When will you enter / leave Canada?")
+// without burning an LLM call per page. Covers the common patterns
+// the user might type:
+//   - "May 5–15, 2026" / "May 5 to May 15, 2026"
+//   - "2026-05-05 to 2026-05-15"
+//   - "5/5/26 - 5/15/26"
+//   - "10-day trip in May 2026" → start=May 1, end=May 10
+//   - "May 2026" → start=May 1 (no end)
+// Returns ISO YYYY-MM-DD strings. Conservative: returns null when
+// nothing parseable was found.
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+  apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+  aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+  nov: 11, november: 11, dec: 12, december: 12,
+};
+function pad(n: number): string { return String(n).padStart(2, "0"); }
+function toIso(y: number, m: number, d: number): string { return `${y}-${pad(m)}-${pad(d)}`; }
+
+export interface ParsedIntentDates {
+  start?: string;
+  end?: string;
+}
+
+function parseIntentDates(intent: string): ParsedIntentDates {
+  if (!intent || intent.trim().length === 0) return {};
+  const text = intent.trim();
+  const out: ParsedIntentDates = {};
+
+  // ISO range: 2026-05-05 to 2026-05-15
+  const iso = text.match(/(\d{4})-(\d{2})-(\d{2})\s*(?:to|-|–|—|until)\s*(\d{4})-(\d{2})-(\d{2})/i);
+  if (iso) {
+    out.start = `${iso[1]}-${iso[2]}-${iso[3]}`;
+    out.end = `${iso[4]}-${iso[5]}-${iso[6]}`;
+    return out;
+  }
+  // Single ISO date
+  const isoSingle = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (isoSingle) out.start = `${isoSingle[1]}-${isoSingle[2]}-${isoSingle[3]}`;
+
+  // "Month DD–DD, YYYY" / "Month DD to Month DD, YYYY"
+  // Common range patterns with month names.
+  const monthRange = text.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})\s*(?:to|-|–|—|until)\s*(?:([A-Za-z]{3,9})\s+)?(\d{1,2}),?\s+(\d{4})\b/i);
+  if (monthRange) {
+    const m1 = MONTH_NAMES[monthRange[1].toLowerCase()];
+    const m2 = monthRange[3] ? MONTH_NAMES[monthRange[3].toLowerCase()] : m1;
+    const y = parseInt(monthRange[5], 10);
+    if (m1 && m2) {
+      out.start = toIso(y, m1, parseInt(monthRange[2], 10));
+      out.end = toIso(y, m2, parseInt(monthRange[4], 10));
+      return out;
+    }
+  }
+
+  // "Month YYYY" — month only
+  const monthOnly = text.match(/\b([A-Za-z]{3,9})\s+(\d{4})\b/i);
+  if (monthOnly && !out.start) {
+    const m = MONTH_NAMES[monthOnly[1].toLowerCase()];
+    const y = parseInt(monthOnly[2], 10);
+    if (m) out.start = toIso(y, m, 1);
+  }
+
+  // "N-day trip" / "N day" + anchor month → infer end from start + N - 1
+  const dur = text.match(/\b(\d{1,3})\s*[-\s]?day\b/i);
+  if (dur && out.start && !out.end) {
+    const n = parseInt(dur[1], 10);
+    if (n > 0 && n < 365) {
+      const [y, m, d] = out.start.split("-").map(Number);
+      const start = new Date(Date.UTC(y, m - 1, d));
+      const end = new Date(start.getTime() + (n - 1) * 86400000);
+      out.end = toIso(end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate());
+    }
+  }
+
+  return out;
+}
+
+// Decide whether a composite's label semantically points to the
+// "start" or "end" half of an intent date range. Conservative
+// keyword matching; defaults to start when unclear so a single-date
+// fill ("May 2026") doesn't accidentally land on the end field.
+function pickIntentDateForComposite(label: string, parsed: ParsedIntentDates): string | undefined {
+  const l = label.toLowerCase();
+  if (/\b(leave|depart|exit|end|return|until|to)\b/.test(l)) return parsed.end ?? parsed.start;
+  return parsed.start ?? parsed.end;
 }
 
 // Fill a composite date by writing each part. Returns true if all
@@ -283,28 +483,70 @@ function findLabel(el: HTMLElement): string {
     const parts: string[] = [];
     for (const ref of labelledby.split(/\s+/).filter(Boolean)) {
       const ref_el = el.ownerDocument.getElementById(ref);
-      const txt = ref_el?.textContent?.trim();
+      if (!ref_el) continue;
+      // Prefer direct text (the heading's own text) over textContent
+      // (which would concatenate every descendant — including every
+      // sibling radio's text in modern radio-group widgets).
+      const txt = directText(ref_el) || (ref_el.textContent ?? "").trim();
       if (txt) parts.push(txt);
     }
-    if (parts.length) return parts.join(" ");
+    if (parts.length) return cleanLabel(parts.join(" "));
   }
   const id = el.getAttribute("id");
   if (id) {
-    // querySelector with CSS.escape covers ids that include special chars
-    // (common with framework-generated ids like "react-hook-form-42").
     const l = el.ownerDocument.querySelector(`label[for="${CSS.escape(id)}"]`);
-    const txt = l?.textContent?.trim();
-    if (txt) return txt;
+    if (l) {
+      const txt = directText(l) || (l.textContent ?? "").trim();
+      if (txt) return cleanLabel(txt);
+    }
   }
   const parent = el.closest("label");
-  if (parent?.textContent) return parent.textContent.trim();
-  return (
+  if (parent) {
+    const txt = directText(parent) || (parent.textContent ?? "").trim();
+    if (txt) return cleanLabel(txt);
+  }
+  const fallback = (
     el.getAttribute("aria-label") ??
     el.getAttribute("title") ??
     (el as HTMLInputElement).placeholder ??
     el.getAttribute("aria-placeholder") ??
     ""
   ).trim();
+  return cleanLabel(fallback);
+}
+
+// Normalize a section / group label captured from messy DOM. Forms
+// often wrap the question text alongside required-markers, help text,
+// and whitespace formatting. Strip the noise so the matcher prompt
+// and HUD show a clean question. Also caps the result so we never
+// surface a 500-char concatenation of every option (a real bug seen
+// on Angular Material radio groups where findLabel walked all
+// descendants and pasted "High school or equivalentAssociate's…").
+function cleanLabel(s: string): string {
+  const collapsed = s
+    .replace(/\s+/g, " ")                           // collapse newlines + multi-space
+    .replace(/^\*+\s*/g, "")                        // leading asterisk
+    .replace(/\s*\(\s*required\s*\)\s*/gi, " ")     // "(required)"
+    .replace(/\s*\(\s*optional\s*\)\s*/gi, " ")     // "(optional)"
+    .replace(/\s+\(req…[^)]*\)\s*/gi, " ")         // truncated "(required) help text"
+    .trim();
+  // If a label runs longer than ~140 chars, it almost certainly grew
+  // by concatenating descendant text. Truncate with an ellipsis so
+  // the HUD stays readable and the matcher prompt doesn't bloat.
+  if (collapsed.length <= 140) return collapsed;
+  return collapsed.slice(0, 137).trimEnd() + "…";
+}
+
+// "Direct text content" — only the immediate text nodes of the
+// element, not descendants. Used to pull a question text out of an
+// element that wraps a bunch of option-button descendants whose
+// concatenation would dominate textContent.
+function directText(el: Element): string {
+  let out = "";
+  for (const n of Array.from(el.childNodes)) {
+    if (n.nodeType === Node.TEXT_NODE) out += (n.textContent ?? "");
+  }
+  return out.trim();
 }
 
 // Section context resolution (most specific first):
@@ -317,7 +559,7 @@ function findSection(el: HTMLElement): string {
   if (fs) {
     const legend = fs.querySelector(":scope > legend");
     const txt = legend?.textContent?.trim();
-    if (txt) return txt;
+    if (txt) return cleanLabel(txt);
   }
   // Walk up looking for a labelled region.
   let parent: HTMLElement | null = el.parentElement;
@@ -325,12 +567,12 @@ function findSection(el: HTMLElement): string {
     const role = parent.getAttribute("role");
     if (role === "group" || role === "region") {
       const aria = parent.getAttribute("aria-label")?.trim();
-      if (aria) return aria;
+      if (aria) return cleanLabel(aria);
       const labelledby = parent.getAttribute("aria-labelledby");
       if (labelledby) {
         const ref = parent.ownerDocument.getElementById(labelledby.split(/\s+/)[0]);
         const txt = ref?.textContent?.trim();
-        if (txt) return txt;
+        if (txt) return cleanLabel(txt);
       }
     }
     parent = parent.parentElement;
@@ -343,7 +585,7 @@ function findSection(el: HTMLElement): string {
     if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) preceding = h;
     else break;
   }
-  return preceding?.textContent?.trim() ?? "";
+  return cleanLabel(preceding?.textContent ?? "");
 }
 
 // Browsers silently reject invalid values for typed inputs (date/time/
@@ -592,7 +834,23 @@ async function runFill() {
     compositePartEls.add(c.parts.month);
     compositePartEls.add(c.parts.day);
   }
-  const detectedSansParts = detected.filter((d) => !compositePartEls.has(d.el as HTMLElement));
+  // Phase F1+: collapse same-name radios into a synthetic choice
+  // field. The individual radios get stripped — what reaches the
+  // matcher is one row per group with the actual question label.
+  // We re-tag the first radio of each group with the synthetic id
+  // so elFor() can resolve the group via DOM lookup (the choice
+  // pill click only needs *one* radio's name to find the whole
+  // group via querySelectorAll).
+  const radioGroups = detectRadioGroups(detected);
+  const radioPartEls = new Set<HTMLElement>();
+  for (const g of radioGroups) {
+    for (const p of g.parts) radioPartEls.add(p);
+    g.parts[0].setAttribute(FIELD_ATTR, g.syntheticId);
+  }
+  const detectedSansParts = detected.filter((d) =>
+    !compositePartEls.has(d.el as HTMLElement) &&
+    !radioPartEls.has(d.el as HTMLElement),
+  );
 
   // Phase E1: also collect suspicious candidates. The background
   // routes them through the LLM augmentation pass; the LLM may
@@ -607,6 +865,9 @@ async function runFill() {
 
   // Phase F2: collect options + maxlengths per element so the
   // generator can pick from choice fields and respect character caps.
+  // Radio groups contribute their own option list (collected by
+  // detectRadioGroups) so the matcher sees one row + N options
+  // instead of N rows of identical option lists.
   const fieldOptions: Record<string, string[]> = {};
   const fieldMaxLengths: Record<string, number> = {};
   for (const d of detectedSansParts) {
@@ -615,14 +876,17 @@ async function runFill() {
     const ml = maxLengthOf(d.el);
     if (ml) fieldMaxLengths[d.field.id] = ml;
   }
+  for (const g of radioGroups) {
+    fieldOptions[g.syntheticId] = g.options;
+  }
 
   // Phase F2: any field that looks like it needs *generated* content
-  // gets the intent prompt before we ship to the matcher. We check
-  // for stored intent first — once given for a form, it's reused
-  // across the session.
-  const wouldGenerate = detectedSansParts.some((d) =>
-    isLikelyOpenField(d.field, !!fieldOptions[d.field.id]?.length),
-  );
+  // gets the intent prompt before we ship to the matcher. Radio
+  // groups (synthetic) always have options → they're choice fields,
+  // so they participate in this check too.
+  const wouldGenerate =
+    detectedSansParts.some((d) => isLikelyOpenField(d.field, !!fieldOptions[d.field.id]?.length)) ||
+    radioGroups.some((g) => isLikelyOpenField(g.field, true));
   let intent = "";
   if (wouldGenerate) {
     const stored = await readIntent();
@@ -649,6 +913,7 @@ async function runFill() {
       fields: [
         ...detectedSansParts.map((d) => d.field),
         ...composites.map((c) => c.field),
+        ...radioGroups.map((g) => g.field),
       ],
       candidates: candidates.map((c) => c.cand),
       intent,
@@ -681,10 +946,11 @@ async function runFill() {
   const totalProfileKeys = Object.values(vault).reduce((n, p) => n + Object.keys(p).length, 0);
 
   // Promoted ids = those in enriched fields but not in either the
-  // original DOM detection or the synthetic composites we built.
+  // original DOM detection or the synthetic composites/groups we built.
   const clientKnownIds = new Set([
     ...detectedSansParts.map((d) => d.field.id),
     ...composites.map((c) => c.syntheticId),
+    ...radioGroups.map((g) => g.syntheticId),
   ]);
   const promotedIds = new Set(
     enrichedFields.filter((f) => !clientKnownIds.has(f.id)).map((f) => f.id),
@@ -782,7 +1048,43 @@ async function runFill() {
       conflicted: m.conflicted, value, hidden: field.hidden,
     });
   }
-  // Log how much the enrichment did.
+  // Phase F1+intent: composite dates the matcher couldn't fill (no
+  // profile key) get a second pass from the user's intent. "May 5–15,
+  // 2026" → start fills "When will you enter Canada?", end fills
+  // "When will you leave Canada?". Composite already filled by the
+  // matcher (rare — profile rarely has trip dates) is left alone.
+  const parsedDates = parseIntentDates(intent);
+  if (parsedDates.start || parsedDates.end) {
+    const filledIds = new Set(rows.filter((r) => r.status === "filled").map((r) => r.fieldId));
+    for (const c of composites) {
+      if (filledIds.has(c.syntheticId)) continue;
+      const iso = pickIntentDateForComposite(c.field.label, parsedDates);
+      if (!iso) continue;
+      const ok = fillDateComposite(c.parts, iso);
+      // Replace the skipped row for this composite with a filled one.
+      const existingIdx = rows.findIndex((r) => r.fieldId === c.syntheticId);
+      const filledRow: FillReportRow = ok ? {
+        fieldId: c.syntheticId, label: c.field.label, status: "filled",
+        reason: `from intent: ${iso}`,
+        value: iso,
+        entityName: "intent",
+      } : {
+        fieldId: c.syntheticId, label: c.field.label, status: "skipped",
+        reason: `intent gave ${iso} but selects didn't have a matching option`,
+        entityName: "intent",
+      };
+      if (existingIdx >= 0) rows[existingIdx] = filledRow;
+      else rows.push(filledRow);
+      if (ok) {
+        for (const p of [c.parts.year, c.parts.month, c.parts.day]) {
+          p.style.outline = "2px solid currentColor";
+          p.style.outlineOffset = "1px";
+          setTimeout(() => { p.style.outline = ""; p.style.outlineOffset = ""; }, 2500);
+        }
+      }
+    }
+  }
+  // Log enrichment + drafts so the diagnostic story is in one place.
   if (enrichment) {
     const ncorr = Object.keys(enrichment.corrections).length;
     const npromo = enrichment.promotions.length;
@@ -790,6 +1092,9 @@ async function runFill() {
       console.log(`[OctoVault] LLM enrichment: ${ncorr} label correction${ncorr === 1 ? "" : "s"}, ${npromo} candidate promotion${npromo === 1 ? "" : "s"}`);
     }
   }
+  console.log(`[OctoVault] drafts: ${drafts.length}`, drafts);
+  // Per-row breakdown to make "0 filled" debuggable from one paste.
+  console.table(rows.map((r) => ({ id: r.fieldId, label: r.label.slice(0, 40), status: r.status, reason: r.reason.slice(0, 80), entity: r.entityName, key: r.profileKey })));
 
   const filled = rows.filter((r) => r.status === "filled").length;
   const skipped = rows.filter((r) => r.status === "skipped").length;
@@ -1007,9 +1312,19 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
   header.appendChild(headerActions);
   wrap.appendChild(header);
 
+  // Single scrollable container for both matched rows AND drafts.
+  // Previously the body alone was scrollable and the drafts section
+  // appended directly to `wrap`, leaving long draft lists clipped
+  // below the viewport with no way to reach them.
+  const scroller = document.createElement("div");
+  Object.assign(scroller.style, {
+    overflowY: "auto", flex: "1 1 auto", minHeight: "0",
+  } satisfies Partial<CSSStyleDeclaration>);
+  wrap.appendChild(scroller);
+
   const body = document.createElement("div");
   Object.assign(body.style, {
-    overflowY: "auto", padding: "8px 4px",
+    padding: "8px 4px",
     fontSize: "11.5px", lineHeight: "1.4",
   } satisfies Partial<CSSStyleDeclaration>);
 
@@ -1048,14 +1363,19 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
       Object.assign(dotEl.style, { color: dotColor, flex: "0 0 auto", marginTop: "1px" } satisfies Partial<CSSStyleDeclaration>);
       row.appendChild(dotEl);
       const txt = document.createElement("div");
-      txt.style.flex = "1";
-      txt.innerHTML = `<div style="opacity:0.95">${escapeHtml(r.label)}${r.hidden ? ' <span style="opacity:0.5">(hidden)</span>' : ""}</div><div style="opacity:0.55;font-size:10.5px">${escapeHtml(r.reason)}</div>`;
+      txt.style.cssText = "flex:1;min-width:0;line-height:1.35;";
+      // !important on display/line-height defeats the host page's
+      // global resets that were causing label + reason to overlap
+      // on Ashby / similar Tailwind-heavy pages.
+      txt.innerHTML =
+        `<div style="opacity:0.95;display:block !important;line-height:1.35 !important;overflow-wrap:anywhere;">${escapeHtml(r.label)}${r.hidden ? ' <span style="opacity:0.5">(hidden)</span>' : ""}</div>` +
+        `<div style="opacity:0.55;font-size:10.5px;display:block !important;line-height:1.35 !important;overflow-wrap:anywhere;">${escapeHtml(r.reason)}</div>`;
       row.appendChild(txt);
       section.appendChild(row);
     }
     body.appendChild(section);
   }
-  wrap.appendChild(body);
+  scroller.appendChild(body);
 
   // Phase F3-F4: drafts section. Each draft renders as an editable
   // textarea (or button list for choice fields) with a per-row Fill
@@ -1068,13 +1388,32 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
       padding: "8px 10px 10px",
     } satisfies Partial<CSSStyleDeclaration>);
 
+    const headRow = document.createElement("div");
+    Object.assign(headRow.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 6px" } satisfies Partial<CSSStyleDeclaration>);
     const head = document.createElement("div");
     head.textContent = `Drafts (${drafts.length}) — review before filling`;
     Object.assign(head.style, {
       fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.15em",
-      opacity: "0.6", margin: "0 0 6px",
+      opacity: "0.6",
     } satisfies Partial<CSSStyleDeclaration>);
-    section.appendChild(head);
+    // Phase F4+: fill-all for textarea/text drafts (choice drafts
+    // still need a click — picking an option is itself the user's
+    // approval). Iterates all draft rows and triggers their Fill
+    // button click for non-choice drafts.
+    const fillAllBtn = document.createElement("button");
+    fillAllBtn.textContent = "Fill all";
+    Object.assign(fillAllBtn.style, {
+      background: "#f5f5f5", color: "#0a0a0a", border: "none",
+      borderRadius: "6px", padding: "2px 10px",
+      fontSize: "10px", fontWeight: "600", cursor: "pointer",
+    } satisfies Partial<CSSStyleDeclaration>);
+    fillAllBtn.addEventListener("click", () => {
+      const fills = section.querySelectorAll<HTMLButtonElement>("button[data-fill='1']:not([disabled])");
+      for (const b of fills) b.click();
+    });
+    headRow.appendChild(head);
+    headRow.appendChild(fillAllBtn);
+    section.appendChild(headRow);
 
     for (const d of drafts) {
       const row = document.createElement("div");
@@ -1105,15 +1444,42 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
           } satisfies Partial<CSSStyleDeclaration>);
           btn.addEventListener("click", () => {
             if (!d.el) return;
-            // For radio groups, click the matching radio. For
-            // selects, set its value to the matching option.
+            // For radio groups, find the matching radio by label
+            // and CLICK the user-facing wrapper (Angular Material,
+            // Vuetify, headless UI etc. all hide the native input
+            // and listen for clicks on the visible label/wrapper).
+            // .click() fires the full native sequence — mousedown,
+            // mouseup, click, change — so framework state updates
+            // correctly. Simply setting .checked = true does not.
             if (d.el instanceof HTMLInputElement && d.el.type === "radio") {
               const group = d.el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='radio'][name="${CSS.escape(d.el.name)}"]`);
               for (const r of group) {
-                if (findLabel(r).trim().toLowerCase() === opt.trim().toLowerCase()) {
+                // Ashby and other modern hiring tools render the
+                // <input type="radio"> as sr-only and rely on a
+                // sibling/label/parent for the visible click target.
+                // The label text may live in any of those — match on
+                // the radio's findLabel result OR on the rendered
+                // text of the nearest associated label / wrapper.
+                const rLabel = findLabel(r).trim().toLowerCase();
+                const associatedLabel =
+                  (r.id ? r.ownerDocument.querySelector(`label[for="${CSS.escape(r.id)}"]`) : null) ??
+                  r.closest("label");
+                const wrapperText = (associatedLabel?.textContent ?? "").trim().toLowerCase();
+                if (rLabel === opt.trim().toLowerCase() || wrapperText === opt.trim().toLowerCase()) {
+                  // Try every plausible click target in priority order.
+                  // First one that's visible AND clicks successfully
+                  // wins. We do NOT short-circuit on the first try —
+                  // some frameworks (Ashby's Radix-style) need both
+                  // the wrapper click AND the native dispatchEvent
+                  // for state to propagate.
                   r.checked = true;
-                  r.dispatchEvent(new Event("change", { bubbles: true }));
-                  r.dispatchEvent(new Event("input", { bubbles: true }));
+                  if (associatedLabel) (associatedLabel as HTMLElement).click();
+                  r.click();
+                  // Synthesize a pointerdown→pointerup sequence too;
+                  // some React handlers listen for that instead of click.
+                  for (const evt of ["pointerdown", "pointerup", "click", "change", "input"] as const) {
+                    r.dispatchEvent(new Event(evt, { bubbles: true, cancelable: true }));
+                  }
                   btn.style.background = "#34d399"; btn.style.color = "#0a0a0a";
                   return;
                 }
@@ -1150,6 +1516,7 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
         Object.assign(reasonEl.style, { fontSize: "10px", opacity: "0.55" } satisfies Partial<CSSStyleDeclaration>);
         const fillBtn = document.createElement("button");
         fillBtn.textContent = "Fill";
+        fillBtn.dataset.fill = "1";
         Object.assign(fillBtn.style, {
           background: "#f5f5f5", color: "#0a0a0a", border: "none",
           borderRadius: "6px", padding: "3px 12px",
@@ -1170,7 +1537,7 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
       }
       section.appendChild(row);
     }
-    wrap.appendChild(section);
+    scroller.appendChild(section);
   }
 
   document.documentElement.appendChild(wrap);

@@ -140,39 +140,78 @@ export async function matchFormFields(
   const matches: FieldMatch[] = [];
   const unresolved: { field: DetectedField; entityId: string }[] = [];
 
+  // Find any entity in the vault that has the given key. Used as a
+  // fallback when the routed entity (usually "self") doesn't carry
+  // the requested field — e.g. user imported their passport against
+  // a different entity, so vault["self"] is empty but
+  // vault["ent-xyz"] has email/phone/name. Prefer self when ties.
+  function entityWithKey(key: string): string | null {
+    if (vault["self"]?.[key as ProfileKey]) return "self";
+    for (const eid of Object.keys(vault)) {
+      if (vault[eid]?.[key as ProfileKey]) return eid;
+    }
+    return null;
+  }
+
   // Pre-route every field to a target entity using its section hint.
-  // Heuristic matches still run against the routed entity's profile.
+  // Heuristic matches first check the routed entity; if it lacks the
+  // key, fall back to any entity that has it. Avoids the "Email field
+  // skipped because self profile is empty even though I have email in
+  // the vault" footgun.
   for (const f of fields) {
-    const entityId = routeSectionToEntity(f.section, entities);
-    const profile = vault[entityId] ?? {};
+    const routedEntityId = routeSectionToEntity(f.section, entities);
 
     const ac = f.autocomplete?.toLowerCase().trim();
-    if (ac && AUTOCOMPLETE_MAP[ac] && profile[AUTOCOMPLETE_MAP[ac]]) {
+    if (ac && AUTOCOMPLETE_MAP[ac]) {
       const key = AUTOCOMPLETE_MAP[ac];
-      matches.push({
-        fieldId: f.id, profileKey: key, entityId,
-        confidence: "high", source: "heuristic",
-        conflicted: conflictedOf(vault, entityId, key),
-      });
-      continue;
+      const eid = vault[routedEntityId]?.[key] ? routedEntityId : entityWithKey(key);
+      if (eid) {
+        matches.push({
+          fieldId: f.id, profileKey: key, entityId: eid,
+          confidence: "high", source: "heuristic",
+          conflicted: conflictedOf(vault, eid, key),
+        });
+        continue;
+      }
     }
-    if (f.type === "email" && profile["email"]) {
-      matches.push({
-        fieldId: f.id, profileKey: "email", entityId,
-        confidence: "high", source: "heuristic",
-        conflicted: conflictedOf(vault, entityId, "email"),
-      });
-      continue;
+    if (f.type === "email") {
+      const eid = vault[routedEntityId]?.["email"] ? routedEntityId : entityWithKey("email");
+      if (eid) {
+        matches.push({
+          fieldId: f.id, profileKey: "email", entityId: eid,
+          confidence: "high", source: "heuristic",
+          conflicted: conflictedOf(vault, eid, "email"),
+        });
+        continue;
+      }
     }
-    if (f.type === "tel" && profile["phone"]) {
-      matches.push({
-        fieldId: f.id, profileKey: "phone", entityId,
-        confidence: "high", source: "heuristic",
-        conflicted: conflictedOf(vault, entityId, "phone"),
-      });
-      continue;
+    if (f.type === "tel") {
+      const eid = vault[routedEntityId]?.["phone"] ? routedEntityId : entityWithKey("phone");
+      if (eid) {
+        matches.push({
+          fieldId: f.id, profileKey: "phone", entityId: eid,
+          confidence: "high", source: "heuristic",
+          conflicted: conflictedOf(vault, eid, "phone"),
+        });
+        continue;
+      }
     }
-    unresolved.push({ field: f, entityId });
+    unresolved.push({ field: f, entityId: routedEntityId });
+  }
+
+  // Same fallback for LLM-bound fields: if a field was routed to an
+  // empty entity, re-route to the most populated entity so the LLM
+  // actually has profile context. Self-empty + spouse-has-data is
+  // the common case for users who imported their docs against a
+  // different entity.
+  const populated = Object.entries(vault)
+    .map(([eid, p]) => ({ eid, count: Object.keys(p).length }))
+    .sort((a, b) => b.count - a.count);
+  const richest = populated.find((p) => p.count > 0)?.eid;
+  if (richest) {
+    for (const u of unresolved) {
+      if (Object.keys(vault[u.entityId] ?? {}).length === 0) u.entityId = richest;
+    }
   }
 
   if (unresolved.length === 0 || !cfg) {
