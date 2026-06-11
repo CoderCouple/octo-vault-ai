@@ -309,6 +309,10 @@ ipcMain.on("shortcut.snap",     () => snapShortcutToEdge());
 ipcMain.on("shortcut.setEdge",  (_e, edge: "left" | "right") => setShortcutEdge(edge));
 ipcMain.on("shortcut.hide",     () => shortcutWindow?.hide());
 ipcMain.on("shortcut.show",     () => { if (!shortcutWindow) createShortcutWindow(); shortcutWindow?.show(); });
+ipcMain.on("shortcut.focusMain", () => {
+  const main = BrowserWindow.getAllWindows().find((w) => w !== shortcutWindow && w !== overlayWindow);
+  if (main) { main.show(); main.focus(); }
+});
 
 // --- Launch at login ---
 // Wraps app.setLoginItemSettings so the renderer can toggle it from

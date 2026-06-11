@@ -1,5 +1,5 @@
 // Floating shortcut — small always-on-top capsule. Drag to reposition;
-// click toggles the Spotlight overlay (same surface as ⌘⌥O).
+// click brings the main OctoVault window to the front.
 //
 // Drag is JS-driven because CSS -webkit-app-region: drag can't coexist
 // with onClick on the same element. The trick that makes it actually
@@ -13,18 +13,18 @@
 import { useRef } from "react";
 import { OctoMark } from "../components/octo-mark";
 
-interface OverlayBridge { hide: () => void; show: () => void; toggle: () => void }
 interface ShortcutBridge {
   move: (x: number, y: number) => void;
   snap: () => void;
   contextMenu: () => void;
+  focusMain: () => void;
 }
 
 function bridges() {
   const w = window as unknown as {
-    octovault?: { overlay?: OverlayBridge; shortcut?: ShortcutBridge };
+    octovault?: { shortcut?: ShortcutBridge };
   };
-  return { overlay: w.octovault?.overlay, shortcut: w.octovault?.shortcut };
+  return { shortcut: w.octovault?.shortcut };
 }
 
 const DRAG_THRESHOLD_PX = 4;
@@ -64,7 +64,7 @@ export function FloatingShortcut() {
       if (isDragging.current) {
         bridges().shortcut?.snap(); // immediate snap on release
       } else {
-        bridges().overlay?.toggle(); // unmoved press = click
+        bridges().shortcut?.focusMain(); // unmoved press = open main window
       }
       dragStart.current = null;
       isDragging.current = false;
@@ -79,7 +79,7 @@ export function FloatingShortcut() {
       type="button"
       onMouseDown={onMouseDown}
       onContextMenu={(e) => { e.preventDefault(); bridges().shortcut?.contextMenu(); }}
-      title="OctoVault — click to open, drag to move, right-click for menu"
+      title="OctoVault — click to open window, drag to move, right-click for menu"
       style={{
         background: "transparent",
         backgroundColor: "transparent",
