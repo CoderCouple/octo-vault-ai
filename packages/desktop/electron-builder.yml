@@ -3,8 +3,8 @@
 # default — wire your Apple/Windows certs separately before publishing.
 
 appId: app.octovault.desktop
-productName: OctoVault
-copyright: Copyright © 2026 OctoVault
+productName: OctoVaultAI
+copyright: Copyright © 2026 OctoVaultAI
 
 directories:
   output: dist

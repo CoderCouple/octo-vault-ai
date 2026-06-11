@@ -2,9 +2,9 @@
   "name": "@octovault/desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "OctoVault desktop — your private AI for personal paperwork.",
+  "description": "OctoVaultAI desktop — your private AI for personal paperwork.",
   "author": {
-    "name": "OctoVault",
+    "name": "OctoVaultAI",
     "email": "hello@octovault.app"
   },
   "type": "module",

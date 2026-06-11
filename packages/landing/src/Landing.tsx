@@ -109,17 +109,17 @@ function detectMacArch(): "arm64" | "x64" {
 
 const MAC_DOWNLOADS = {
   arm64: {
-    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg",
+    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1-arm64.dmg",
     label:  "Apple Silicon",
     size:   "115 MB",
-    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg",
+    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1.dmg",
     altLabel: "Intel Mac DMG",
   },
   x64: {
-    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1.dmg",
+    url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1.dmg",
     label:  "Intel Mac",
     size:   "120 MB",
-    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVault-0.0.1-arm64.dmg",
+    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1-arm64.dmg",
     altLabel: "Apple Silicon DMG",
   },
 } as const;
