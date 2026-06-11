@@ -132,7 +132,6 @@ const shortcut = {
   hide:        ()                            => ipcRenderer.send("shortcut.hide"),
   show:        ()                            => ipcRenderer.send("shortcut.show"),
   contextMenu: ()                            => ipcRenderer.send("shortcut.contextMenu"),
-  focusMain:   ()                            => ipcRenderer.send("shortcut.focusMain"),
 };
 
 const launch = {
