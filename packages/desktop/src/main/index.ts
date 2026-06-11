@@ -152,38 +152,42 @@ function createWindow() {
 
   const reveal = (reason: string) => {
     if (win.isDestroyed()) return;
-    // Belt-and-suspenders against macOS edge cases:
-    //  1. Force the activation policy back to "regular" so the dock
-    //     icon appears even if it was somehow suppressed.
-    //  2. Force the dock entry visible.
-    //  3. Re-center on the primary display (in case a stale
-    //     multi-monitor position left it off-screen).
-    //  4. Bounce the dock icon so the user notices it appearing.
     if (process.platform === "darwin") {
       app.setActivationPolicy?.("regular");
       void app.dock?.show?.();
     }
-    const primary = screen.getPrimaryDisplay();
-    const { width: dw, height: dh, x: dx, y: dy } = primary.workArea;
-    const w = Math.min(1280, dw - 40);
-    const h = Math.min(820, dh - 80);
-    win.setBounds({ x: dx + Math.floor((dw - w) / 2), y: dy + Math.floor((dh - h) / 2), width: w, height: h });
-    win.show();
-    win.focus();
-    win.setAlwaysOnTop(true);
-    setTimeout(() => { if (!win.isDestroyed()) win.setAlwaysOnTop(false); }, 1500);
-    if (process.platform === "darwin") {
-      try { app.dock?.bounce?.("informational"); } catch { /* ignore */ }
+    if (win.isMinimized()) {
+      win.restore();
+    } else if (!win.isVisible()) {
+      // Only re-center when the window is hidden (first launch, or was
+      // explicitly hidden). If it's already on screen, just focus it —
+      // re-centering while visible causes a jarring jump and can race
+      // with macOS's window compositor.
+      const primary = screen.getPrimaryDisplay();
+      const { width: dw, height: dh, x: dx, y: dy } = primary.workArea;
+      const w = Math.min(1280, dw - 40);
+      const h = Math.min(820, dh - 80);
+      win.setBounds({ x: dx + Math.floor((dw - w) / 2), y: dy + Math.floor((dh - h) / 2), width: w, height: h });
+      win.show();
     }
+    // app.focus() tells macOS to bring the process to the front before
+    // win.focus() activates the specific window — without it the dock
+    // bounce can happen but the window stays behind other apps.
+    if (process.platform === "darwin") app.focus({ steal: true });
+    win.focus();
     const b = win.getBounds();
     console.log(`[main] reveal (${reason}) bounds=${JSON.stringify(b)} visible=${win.isVisible()} dock.isVisible=${(app.dock as { isVisible?: () => boolean })?.isVisible?.() ?? "?"}`);
   };
 
   win.once("ready-to-show", () => reveal("ready-to-show"));
   setTimeout(() => { if (!win.isDestroyed() && !win.isVisible()) reveal("safety-net"); }, 4000);
-  // Extra safety on macOS: force a dock-click handler so the user
-  // always has a way back.
-  app.on("activate", () => reveal("activate"));
+  app.on("activate", () => {
+    // Dock click: if a window is minimized/hidden, show it; otherwise
+    // just bring the app to front. Runs on every activate event so
+    // cmd-tab back to the app also works.
+    if (win.isDestroyed()) return;
+    reveal("activate");
+  });
 
   // External links go to the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
