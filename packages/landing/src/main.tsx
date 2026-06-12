@@ -2,10 +2,14 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { Landing } from "./Landing";
 import { BugReportPage } from "./BugReport";
+import { PrivacyPage } from "./Privacy";
+import { TermsPage } from "./Terms";
 import { initAnalytics } from "./analytics";
 import "@octovault/ui/styles.css";
 
 function pageFor(pathname: string) {
+  if (pathname === "/privacy") return <PrivacyPage />;
+  if (pathname === "/terms-and-conditions") return <TermsPage />;
   return pathname === "/bug-report" ? <BugReportPage /> : <Landing />;
 }
 

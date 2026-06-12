@@ -12,7 +12,7 @@ export default defineConfig({
     // interactivity are unchanged at runtime.
     vitePrerenderPlugin({
       renderTarget: "#root",
-      additionalPrerenderRoutes: ["/bug-report"],
+      additionalPrerenderRoutes: ["/bug-report", "/privacy", "/terms-and-conditions"],
     }),
   ],
   server: { port: 5175, strictPort: true },
