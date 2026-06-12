@@ -102,7 +102,14 @@ function FactsGraphInner() {
   const [viewMode, setViewModeState] = useState<ViewMode>(
     () => (localStorage.getItem(VIEW_KEY) as ViewMode | null) ?? "source"
   );
-  const setViewMode = (m: ViewMode) => { setViewModeState(m); localStorage.setItem(VIEW_KEY, m); };
+  const setViewMode = (m: ViewMode) => {
+    setViewModeState(m);
+    localStorage.setItem(VIEW_KEY, m);
+    setCreatingEntity(false);
+    setCreatingFact(false);
+    setCreatingRelationship(false);
+    setSelectedNodeId(null);
+  };
 
   const refresh = useCallback(async () => {
     const [profiles, rels] = await Promise.all([
@@ -296,23 +303,23 @@ function FactsGraphInner() {
       <div className="absolute left-3 top-3 z-10 flex items-center gap-0.5 rounded-md border bg-card p-0.5 shadow-sm">
         <button
           onClick={() => setViewMode("source")}
-          title="By source — documents linked to facts"
+          title="Source view — documents linked to extracted facts"
           className={cn(
             "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
             viewMode === "source" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
           )}
         >
-          <FileText className="h-3 w-3" /> By source
+          <FileText className="h-3 w-3" /> Source
         </button>
         <button
           onClick={() => setViewMode("entity")}
-          title="By entity — facts grouped by person"
+          title="Entity view — people, facts, and relationships"
           className={cn(
             "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
             viewMode === "entity" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
           )}
         >
-          <Users className="h-3 w-3" /> By entity
+          <Users className="h-3 w-3" /> Entity
         </button>
         <div className="mx-0.5 h-4 w-px bg-border" />
         <button
@@ -326,51 +333,55 @@ function FactsGraphInner() {
 
       {!readOnly && (
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border bg-card p-0.5 shadow-sm">
-          <button
-            onClick={() => { setCreatingEntity((v) => !v); setCreatingFact(false); setCreatingRelationship(false); }}
-            title="Create entity node"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-              creatingEntity ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-            )}
-          >
-            <UserPlus className="h-3 w-3" /> Entity
-          </button>
-          <button
-            onClick={() => {
-              setCreatingFact((v) => !v);
-              setCreatingEntity(false);
-              setCreatingRelationship(false);
-              setFactDraft((draft) => ({ ...draft, entityId: draft.entityId || entities[0]?.id || SELF_ENTITY_ID }));
-            }}
-            title="Create fact node"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-              creatingFact ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-            )}
-          >
-            <Plus className="h-3 w-3" /> Fact
-          </button>
-          <button
-            onClick={() => {
-              setCreatingRelationship((v) => !v);
-              setCreatingEntity(false);
-              setCreatingFact(false);
-              setRelationshipDraft((draft) => ({
-                ...draft,
-                from: draft.from || SELF_ENTITY_ID,
-                to: draft.to || entities.find((e) => e.id !== SELF_ENTITY_ID)?.id || "",
-              }));
-            }}
-            title="Create relationship edge"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-              creatingRelationship ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-            )}
-          >
-            <Users className="h-3 w-3" /> Relationship
-          </button>
-          <div className="mx-0.5 h-4 w-px bg-border" />
+          {viewMode === "entity" && (
+            <>
+              <button
+                onClick={() => { setCreatingEntity((v) => !v); setCreatingFact(false); setCreatingRelationship(false); }}
+                title="Create entity node"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+                  creatingEntity ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                )}
+              >
+                <UserPlus className="h-3 w-3" /> Entity
+              </button>
+              <button
+                onClick={() => {
+                  setCreatingFact((v) => !v);
+                  setCreatingEntity(false);
+                  setCreatingRelationship(false);
+                  setFactDraft((draft) => ({ ...draft, entityId: draft.entityId || entities[0]?.id || SELF_ENTITY_ID }));
+                }}
+                title="Create fact node"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+                  creatingFact ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                )}
+              >
+                <Plus className="h-3 w-3" /> Fact
+              </button>
+              <button
+                onClick={() => {
+                  setCreatingRelationship((v) => !v);
+                  setCreatingEntity(false);
+                  setCreatingFact(false);
+                  setRelationshipDraft((draft) => ({
+                    ...draft,
+                    from: draft.from || SELF_ENTITY_ID,
+                    to: draft.to || entities.find((e) => e.id !== SELF_ENTITY_ID)?.id || "",
+                  }));
+                }}
+                title="Create relationship edge"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+                  creatingRelationship ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                )}
+              >
+                <Users className="h-3 w-3" /> Relationship
+              </button>
+              <div className="mx-0.5 h-4 w-px bg-border" />
+            </>
+          )}
           <button
             onClick={() => void deleteSelectedNode()}
             disabled={!canDeleteSelected}

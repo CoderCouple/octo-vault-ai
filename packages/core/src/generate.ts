@@ -50,11 +50,15 @@ export interface FieldDraft {
 // A field is open if any of:
 //   - <textarea> with no profile match expected
 //   - <input type="text"> whose label ends with "?" (question)
-//   - radio / select where matching couldn't pick from the profile
+//   - radio / checkbox / select where matching couldn't pick from the profile
 //     because the answer depends on intent, not data
 export function isLikelyOpenField(f: DetectedField, hasOptions: boolean): boolean {
+  const text = `${f.section ?? ""} ${f.label ?? ""} ${f.name ?? ""} ${f.placeholder ?? ""}`.toLowerCase();
+  if (/\b(eeoc|self[-\s]?id|self[-\s]?identification|gender|race|ethnicity|latinx|veteran|disability|sexual\s+orientation|transgender|arbitration|agreement|consent|acknowledge|certif(y|ication))\b/.test(text)) {
+    return false;
+  }
   if (f.type === "textarea") return true;
-  if (hasOptions && (f.type === "radio" || f.type === "select")) return true;
+  if (hasOptions && (f.type === "radio" || f.type === "checkbox" || f.type === "select")) return true;
   if (f.type === "text") {
     const l = f.label?.trim() ?? "";
     if (l.endsWith("?")) return true;
@@ -99,7 +103,7 @@ ${fieldBlocks}
 
 Rules:
 - Free-text drafts (type="textarea" or "text"): write a first-person, concise, ready-to-submit paragraph. Use the intent + profile facts verbatim where they apply. Do NOT emit bracket placeholders like "[start date]", "[your name]", "[city]" — if a specific detail is unknown, write around it naturally ("I will be staying with family" not "I will be staying with [host]"). Stay within the character limit. Match the form's register (government form → formal; product feedback → casual).
-- Choice drafts (type="radio" or "select"): pick exactly one of the supplied options that best fits the intent + profile. The draft string must equal one of the option strings character-for-character (whitespace-normalized).
+- Choice drafts (type="radio", "checkbox", or "select"): pick exactly one of the supplied options that best fits the intent + profile. The draft string must equal one of the option strings character-for-character (whitespace-normalized).
 - If the intent gives you no basis for the field, return an empty string and "confidence": "low" — the HUD will mark it for the user.
 - Never include explanations, prefixes, quotes around the answer, or "Draft:" / "Answer:" labels. Output just the value.
 

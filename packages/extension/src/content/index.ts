@@ -104,7 +104,7 @@ function detectFields() {
       field: {
         id, type,
         label: findLabel(el),
-        name: el.getAttribute("name") ?? "",
+        name: el.getAttribute("name") || el.getAttribute("id") || "",
         placeholder: (el as HTMLInputElement).placeholder ?? el.getAttribute("aria-placeholder") ?? "",
         autocomplete: el.getAttribute("autocomplete") ?? "",
         section: findSection(el),
@@ -132,7 +132,22 @@ interface RadioGroup {
   parts: HTMLInputElement[];         // matched radios for click-to-fill
 }
 
-function findGroupLabel(els: HTMLInputElement[]): string {
+interface CheckboxGroup {
+  syntheticId: string;
+  field: DetectedField;
+  options: string[];
+  parts: HTMLInputElement[];
+}
+
+function stripOptionsFromQuestion(text: string, options: string[]): string {
+  let out = cleanLabel(text);
+  for (const opt of options.filter(Boolean).sort((a, b) => b.length - a.length)) {
+    out = out.replaceAll(opt, "");
+  }
+  return cleanLabel(out);
+}
+
+function findGroupLabel(els: HTMLInputElement[], options: string[]): string {
   // Walk up from any radio to the nearest fieldset or aria-labelled
   // region; use its legend / aria-label as the group question. Falls
   // back to the section helper (heading-based) when no labelled
@@ -143,6 +158,8 @@ function findGroupLabel(els: HTMLInputElement[]): string {
       const legend = fs.querySelector(":scope > legend");
       const txt = legend?.textContent?.trim();
       if (txt) return cleanLabel(txt);
+      const fromFieldset = stripOptionsFromQuestion(directText(fs) || fs.textContent?.trim() || "", options);
+      if (fromFieldset) return fromFieldset;
     }
     let parent: HTMLElement | null = r.parentElement;
     while (parent) {
@@ -180,9 +197,23 @@ function findGroupLabel(els: HTMLInputElement[]): string {
 
 function detectRadioGroups(detected: { el: Fillable; field: DetectedField }[]): RadioGroup[] {
   const byName = new Map<string, { el: HTMLInputElement; field: DetectedField }[]>();
+  const containerKeys = new WeakMap<Element, string>();
+  let containerSeq = 0;
+  const keyForRadio = (el: HTMLInputElement, field: DetectedField): string => {
+    if (el.name) return `name:${el.name}`;
+    const container = el.closest("[role='radiogroup'], fieldset, [role='group']");
+    if (container) {
+      const existing = containerKeys.get(container);
+      if (existing) return existing;
+      const key = `container:${containerSeq++}`;
+      containerKeys.set(container, key);
+      return key;
+    }
+    return `label:${field.section ?? ""}:${field.label}`;
+  };
   for (const d of detected) {
     if (!(d.el instanceof HTMLInputElement) || d.el.type !== "radio") continue;
-    const key = d.el.name || `__unnamed__${d.field.section ?? ""}`;
+    const key = keyForRadio(d.el, d.field);
     const arr = byName.get(key) ?? [];
     arr.push({ el: d.el, field: d.field });
     byName.set(key, arr);
@@ -201,7 +232,56 @@ function detectRadioGroups(detected: { el: Fillable; field: DetectedField }[]): 
       field: {
         id: syntheticId,
         type: "radio",
-        label: findGroupLabel(els),
+        label: findGroupLabel(els, options),
+        name: els[0].name ?? "",
+        placeholder: "",
+        autocomplete: "",
+        section: members[0].field.section,
+      },
+      options,
+      parts: els,
+    });
+  }
+  return groups;
+}
+
+function detectCheckboxGroups(detected: { el: Fillable; field: DetectedField }[]): CheckboxGroup[] {
+  const byKey = new Map<string, { el: HTMLInputElement; field: DetectedField }[]>();
+  const containerKeys = new WeakMap<Element, string>();
+  let containerSeq = 0;
+  const keyForCheckbox = (el: HTMLInputElement, field: DetectedField): string => {
+    if (el.name) return `name:${el.name}`;
+    const container = el.closest("fieldset, [role='group'], [aria-labelledby]");
+    if (container) {
+      const existing = containerKeys.get(container);
+      if (existing) return existing;
+      const key = `container:${containerSeq++}`;
+      containerKeys.set(container, key);
+      return key;
+    }
+    return `label:${field.section ?? ""}:${field.label}`;
+  };
+  for (const d of detected) {
+    if (!(d.el instanceof HTMLInputElement) || d.el.type !== "checkbox") continue;
+    if (d.field.hidden) continue;
+    const key = keyForCheckbox(d.el, d.field);
+    const arr = byKey.get(key) ?? [];
+    arr.push({ el: d.el, field: d.field });
+    byKey.set(key, arr);
+  }
+  const groups: CheckboxGroup[] = [];
+  let i = 0;
+  for (const [, members] of byKey) {
+    if (members.length < 2) continue;
+    const els = members.map((m) => m.el);
+    const options = members.map((m) => m.field.label || m.el.value || "").filter(Boolean);
+    const syntheticId = `ov-cgroup-${i++}`;
+    groups.push({
+      syntheticId,
+      field: {
+        id: syntheticId,
+        type: "checkbox",
+        label: findGroupLabel(els, options),
         name: els[0].name ?? "",
         placeholder: "",
         autocomplete: "",
@@ -610,8 +690,94 @@ function valueIsCompatible(el: HTMLElement, value: string): boolean {
   }
 }
 
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  "united states": ["united states", "united states of america", "usa", "us", "u.s.", "u.s.a.", "america"],
+  "india": ["india", "ind", "in", "bharat"],
+  "canada": ["canada", "can", "ca"],
+  "united kingdom": ["united kingdom", "uk", "u.k.", "great britain", "britain", "england", "gb", "gbr"],
+};
+
+function normalizeChoice(s: string): string {
+  return s.toLowerCase().replace(/&amp;/g, "and").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function choiceCandidates(value: string): string[] {
+  const norm = normalizeChoice(value);
+  const out = new Set<string>([norm]);
+  if (COUNTRY_ALIASES[norm]) {
+    for (const alias of COUNTRY_ALIASES[norm]) out.add(normalizeChoice(alias));
+  }
+  for (const aliases of Object.values(COUNTRY_ALIASES)) {
+    if (aliases.some((a) => normalizeChoice(a) === norm)) {
+      for (const alias of aliases) out.add(normalizeChoice(alias));
+    }
+  }
+  if (/\bmale\b/.test(norm)) out.add("m");
+  if (/\bfemale\b/.test(norm)) out.add("f");
+  return [...out];
+}
+
+function setSelectValue(el: HTMLSelectElement, value: string): boolean {
+  const wanted = choiceCandidates(value);
+  const options = Array.from(el.options);
+  const match = options.find((o) => {
+    const ov = normalizeChoice(o.value);
+    const ot = normalizeChoice(o.textContent ?? "");
+    return wanted.includes(ov) || wanted.includes(ot);
+  }) ?? options.find((o) => {
+    const ov = normalizeChoice(o.value);
+    const ot = normalizeChoice(o.textContent ?? "");
+    return wanted.some((w) => (w.length > 2 && (ov.includes(w) || ot.includes(w))) || (ov.length > 2 && w.includes(ov)) || (ot.length > 2 && w.includes(ot)));
+  });
+  if (!match) return false;
+  el.value = match.value;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function visible(el: Element): el is HTMLElement {
+  if (!(el instanceof HTMLElement)) return false;
+  return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+}
+
+function dispatchKey(el: HTMLElement, key: string) {
+  for (const type of ["keydown", "keyup"] as const) {
+    el.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true }));
+  }
+}
+
+function clickMatchingOption(doc: Document, value: string): boolean {
+  const wanted = choiceCandidates(value);
+  const candidates = Array.from(doc.querySelectorAll<HTMLElement>(
+    "[role='option'], [role='menuitem'], [role='listitem'], li, [data-value], [data-option-value]",
+  )).filter(visible);
+  const match = candidates.find((el) => {
+    const text = normalizeChoice(el.textContent ?? "");
+    const dataValue = normalizeChoice(el.getAttribute("data-value") ?? el.getAttribute("data-option-value") ?? "");
+    if (!text && !dataValue) return false;
+    return wanted.some((w) =>
+      w === text || w === dataValue ||
+      (w.length > 2 && (text.includes(w) || dataValue.includes(w))) ||
+      (text.length > 2 && w.includes(text)) ||
+      (dataValue.length > 2 && w.includes(dataValue))
+    );
+  });
+  if (!match) return false;
+  match.click();
+  match.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  match.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+  match.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  return true;
+}
+
 function setNativeValue(el: HTMLElement, value: string): boolean {
   if (!valueIsCompatible(el, value)) return false;
+  if (el instanceof HTMLSelectElement) return setSelectValue(el, value);
   // contenteditable and role=textbox elements don't have a `value`
   // property — set textContent and fire an input event. Frameworks
   // listening for "input" on these widgets (Lexical, Slate, etc.)
@@ -631,6 +797,22 @@ function setNativeValue(el: HTMLElement, value: string): boolean {
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
+}
+
+async function setFillValue(el: HTMLElement, value: string): Promise<boolean> {
+  if (el.getAttribute("role") === "combobox") {
+    el.focus();
+    el.click();
+    const wrote = await setFillValue(el, value);
+    if (!wrote) return false;
+    await sleep(180);
+    const clicked = clickMatchingOption(el.ownerDocument, value);
+    if (clicked) return true;
+    dispatchKey(el, "ArrowDown");
+    dispatchKey(el, "Enter");
+    return true;
+  }
+  return setNativeValue(el, value);
 }
 
 // Phase F2: per-field options and maxlength so the generator knows
@@ -847,9 +1029,16 @@ async function runFill() {
     for (const p of g.parts) radioPartEls.add(p);
     g.parts[0].setAttribute(FIELD_ATTR, g.syntheticId);
   }
+  const checkboxGroups = detectCheckboxGroups(detected);
+  const checkboxPartEls = new Set<HTMLElement>();
+  for (const g of checkboxGroups) {
+    for (const p of g.parts) checkboxPartEls.add(p);
+    g.parts[0].setAttribute(FIELD_ATTR, g.syntheticId);
+  }
   const detectedSansParts = detected.filter((d) =>
     !compositePartEls.has(d.el as HTMLElement) &&
-    !radioPartEls.has(d.el as HTMLElement),
+    !radioPartEls.has(d.el as HTMLElement) &&
+    !checkboxPartEls.has(d.el as HTMLElement),
   );
 
   // Phase E1: also collect suspicious candidates. The background
@@ -879,6 +1068,9 @@ async function runFill() {
   for (const g of radioGroups) {
     fieldOptions[g.syntheticId] = g.options;
   }
+  for (const g of checkboxGroups) {
+    fieldOptions[g.syntheticId] = g.options;
+  }
 
   // Phase F2: any field that looks like it needs *generated* content
   // gets the intent prompt before we ship to the matcher. Radio
@@ -886,7 +1078,8 @@ async function runFill() {
   // so they participate in this check too.
   const wouldGenerate =
     detectedSansParts.some((d) => isLikelyOpenField(d.field, !!fieldOptions[d.field.id]?.length)) ||
-    radioGroups.some((g) => isLikelyOpenField(g.field, true));
+    radioGroups.some((g) => isLikelyOpenField(g.field, true)) ||
+    checkboxGroups.some((g) => isLikelyOpenField(g.field, true));
   let intent = "";
   if (wouldGenerate) {
     const stored = await readIntent();
@@ -914,6 +1107,7 @@ async function runFill() {
         ...detectedSansParts.map((d) => d.field),
         ...composites.map((c) => c.field),
         ...radioGroups.map((g) => g.field),
+        ...checkboxGroups.map((g) => g.field),
       ],
       candidates: candidates.map((c) => c.cand),
       intent,
@@ -951,6 +1145,7 @@ async function runFill() {
     ...detectedSansParts.map((d) => d.field.id),
     ...composites.map((c) => c.syntheticId),
     ...radioGroups.map((g) => g.syntheticId),
+    ...checkboxGroups.map((g) => g.syntheticId),
   ]);
   const promotedIds = new Set(
     enrichedFields.filter((f) => !clientKnownIds.has(f.id)).map((f) => f.id),
@@ -1158,6 +1353,7 @@ const OCTO_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
 
 function mountButton() {
   if (document.getElementById("octovault-launcher")) return;
+  if (window.top !== window && detectFields().length === 0) return;
   const btn = document.createElement("button");
   btn.id = "octovault-launcher";
   // Phase D — the button has a label span and a count badge span.
@@ -1452,7 +1648,10 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
             // mouseup, click, change — so framework state updates
             // correctly. Simply setting .checked = true does not.
             if (d.el instanceof HTMLInputElement && d.el.type === "radio") {
-              const group = d.el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='radio'][name="${CSS.escape(d.el.name)}"]`);
+              const container = d.el.closest("[role='radiogroup'], fieldset, [role='group']");
+              const group = d.el.name
+                ? d.el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='radio'][name="${CSS.escape(d.el.name)}"]`)
+                : container?.querySelectorAll<HTMLInputElement>("input[type='radio']") ?? [d.el];
               for (const r of group) {
                 // Ashby and other modern hiring tools render the
                 // <input type="radio"> as sr-only and rely on a
@@ -1460,12 +1659,14 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
                 // The label text may live in any of those — match on
                 // the radio's findLabel result OR on the rendered
                 // text of the nearest associated label / wrapper.
-                const rLabel = findLabel(r).trim().toLowerCase();
+                const wanted = normalizeChoice(opt);
+                const rLabel = normalizeChoice(findLabel(r));
                 const associatedLabel =
                   (r.id ? r.ownerDocument.querySelector(`label[for="${CSS.escape(r.id)}"]`) : null) ??
                   r.closest("label");
-                const wrapperText = (associatedLabel?.textContent ?? "").trim().toLowerCase();
-                if (rLabel === opt.trim().toLowerCase() || wrapperText === opt.trim().toLowerCase()) {
+                const optionWrapper = r.closest<HTMLElement>("[role='radio'], label, [class*='option'], [class*='Option']") ?? r.parentElement?.parentElement;
+                const wrapperText = normalizeChoice((associatedLabel?.textContent ?? optionWrapper?.textContent ?? ""));
+                if (rLabel === wanted || wrapperText === wanted) {
                   // Try every plausible click target in priority order.
                   // First one that's visible AND clicks successfully
                   // wins. We do NOT short-circuit on the first try —
@@ -1473,12 +1674,46 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
                   // the wrapper click AND the native dispatchEvent
                   // for state to propagate.
                   r.checked = true;
+                  optionWrapper?.click();
                   if (associatedLabel) (associatedLabel as HTMLElement).click();
                   r.click();
                   // Synthesize a pointerdown→pointerup sequence too;
                   // some React handlers listen for that instead of click.
-                  for (const evt of ["pointerdown", "pointerup", "click", "change", "input"] as const) {
-                    r.dispatchEvent(new Event(evt, { bubbles: true, cancelable: true }));
+                  for (const evt of ["pointerdown", "pointerup", "mousedown", "mouseup", "click"] as const) {
+                    optionWrapper?.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true }));
+                    r.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true }));
+                  }
+                  r.dispatchEvent(new Event("change", { bubbles: true }));
+                  r.dispatchEvent(new Event("input", { bubbles: true }));
+                  btn.style.background = "#34d399"; btn.style.color = "#0a0a0a";
+                  return;
+                }
+              }
+            } else if (d.el instanceof HTMLInputElement && d.el.type === "checkbox") {
+              const container = d.el.closest("fieldset, [role='group'], [aria-labelledby]");
+              const group = d.el.name
+                ? d.el.ownerDocument.querySelectorAll<HTMLInputElement>(`input[type='checkbox'][name="${CSS.escape(d.el.name)}"]`)
+                : container?.querySelectorAll<HTMLInputElement>("input[type='checkbox']") ?? [d.el];
+              const wanted = normalizeChoice(opt);
+              for (const c of group) {
+                const cLabel = normalizeChoice(findLabel(c));
+                const associatedLabel =
+                  (c.id ? c.ownerDocument.querySelector(`label[for="${CSS.escape(c.id)}"]`) : null) ??
+                  c.closest("label");
+                const optionWrapper = c.closest<HTMLElement>("[role='checkbox'], label, [class*='option'], [class*='Option']") ?? c.parentElement?.parentElement;
+                const wrapperText = normalizeChoice((associatedLabel?.textContent ?? optionWrapper?.textContent ?? ""));
+                if (cLabel === wanted || wrapperText === wanted) {
+                  if (!c.checked) {
+                    optionWrapper?.click();
+                    if (associatedLabel) (associatedLabel as HTMLElement).click();
+                    c.click();
+                    for (const evt of ["pointerdown", "pointerup", "mousedown", "mouseup", "click"] as const) {
+                      optionWrapper?.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true }));
+                      c.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true }));
+                    }
+                    c.checked = true;
+                    c.dispatchEvent(new Event("change", { bubbles: true }));
+                    c.dispatchEvent(new Event("input", { bubbles: true }));
                   }
                   btn.style.background = "#34d399"; btn.style.color = "#0a0a0a";
                   return;
@@ -1522,9 +1757,9 @@ function showHud(report: { rows: FillReportRow[]; source: string; filled: number
           borderRadius: "6px", padding: "3px 12px",
           fontSize: "10.5px", fontWeight: "600", cursor: "pointer",
         } satisfies Partial<CSSStyleDeclaration>);
-        fillBtn.addEventListener("click", () => {
+        fillBtn.addEventListener("click", async () => {
           if (!d.el) return;
-          const ok = setNativeValue(d.el, ta.value);
+          const ok = await setFillValue(d.el, ta.value);
           if (ok) {
             fillBtn.textContent = "Filled";
             fillBtn.style.background = "#34d399";
@@ -1582,6 +1817,11 @@ let lastFieldCount = -1;
 
 function refreshDetection(reason: string) {
   const next = detectFields().length;
+  if (window.top !== window && next === 0) {
+    document.getElementById("octovault-launcher")?.remove();
+  } else {
+    mountButton();
+  }
   if (next === lastFieldCount) return;
   lastFieldCount = next;
   applyDevBadgeUi(next);

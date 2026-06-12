@@ -112,6 +112,123 @@ const AUTOCOMPLETE_MAP: Record<string, ProfileKey> = {
   "organization-title": "jobTitle",
 };
 
+const FIELD_TEXT_HINTS: Partial<Record<ProfileKey, RegExp[]>> = {
+  fullName: [/\b(full|legal|applicant|customer|employee|beneficiary)\s+name\b/i, /\bname\s+as\s+.*passport\b/i],
+  firstName: [/\b(first|given|forename)\s+name\b/i, /\bgiven\b/i],
+  middleName: [/\bmiddle\s+(name|initial)\b/i],
+  lastName: [/\b(last|family|sur|surname)\s+name\b/i, /\bsurname\b/i],
+  dateOfBirth: [/\b(date\s+of\s+birth|birth\s+date|dob|birthday)\b/i],
+  placeOfBirth: [/\b(place|city|country)\s+of\s+birth\b/i, /\bbirth\s+(place|city|country)\b/i],
+  gender: [/\b(gender|sex)\b/i],
+  nationality: [/\b(nationality|citizenship)\b/i],
+  email: [/\b(e-?mail|email\s+address)\b/i],
+  phone: [/\b(phone|mobile|cell|telephone|contact\s+number)\b/i],
+  linkedinProfile: [/\blinked\s*in\b/i, /\blinkedin\s+(profile|url)\b/i],
+  personalWebsite: [/\b(personal\s+)?website\b/i, /\bportfolio\b/i],
+  githubProfile: [/\bgithub\b/i],
+  publicationsUrl: [/\bpublications?\b/i, /\bgoogle\s+scholar\b/i, /\bscholar\s+url\b/i],
+  addressLine1: [/\b(address\s+line\s*1|street\s+address|address)\b/i],
+  addressLine2: [/\b(address\s+line\s*2|apt|apartment|unit|suite)\b/i],
+  city: [/\b(city|town)\b/i, /\blocation\s*\(\s*city\s*\)\b/i],
+  state: [/\b(state|province|region)\b/i],
+  postalCode: [/\b(zip|postal|postcode|pin\s*code)\b/i],
+  country: [/\b(country|country\s+of\s+residence|residence\s+country)\b/i],
+  passportNumber: [/\bpassport\s+(number|no\.?|#)\b/i],
+  passportIssuer: [/\b(passport\s+)?(issuing|issuer)\s+country\b/i],
+  passportIssueDate: [/\bpassport\s+(issue|issued)\s+date\b/i, /\bdate\s+of\s+issue\b/i],
+  passportExpiryDate: [/\bpassport\s+(expir(y|ation)|expires?)\b/i, /\bdate\s+of\s+expiry\b/i],
+  driversLicenseNumber: [/\b(driver'?s?\s+license|dl)\s+(number|no\.?|#)\b/i],
+  nationalIdNumber: [/\bnational\s+id\s+(number|no\.?|#)\b/i],
+  ssn: [/\b(ssn|social\s+security)\b/i],
+  taxIdNumber: [/\b(tax\s+id|tin|itin)\b/i],
+  employerName: [/\b(employer|company|organization)\b/i],
+  jobTitle: [/\b(job\s+title|position|role|occupation)\b/i],
+  employmentStartDate: [/\b(employment|job|work).*\b(start|from|begin)\b/i, /\bdate\s+hired\b/i],
+  employmentEndDate: [/\b(employment|job|work).*\b(end|until|to|last\s+day)\b/i],
+  annualSalary: [/\b(salary|annual\s+income|base\s+pay|compensation)\b/i],
+  visaType: [/\b(visa|status).*\b(type|class|classification|category)\b/i],
+  uciNumber: [/\buci\b/i, /\bunique\s+client\s+identifier\b/i, /\bclient\s+id(entifier)?\b/i],
+  visaReceiptNumber: [/\b(receipt|case|petition)\s+(number|no\.?|#)\b/i],
+  visaValidFrom: [/\b(visa|petition).*\b(valid\s+from|start)\b/i],
+  visaValidUntil: [/\b(visa|petition|status).*\b(valid\s+until|expires?|expiry|end)\b/i],
+  visaPetitioner: [/\b(petitioner|sponsor)\b/i],
+  visaBeneficiary: [/\bbeneficiary\b/i],
+  i94Number: [/\bi-?94.*\b(number|no\.?|#)\b/i],
+  i94ExpiryDate: [/\bi-?94.*\b(expir(y|ation)|admit\s+until|authorized\s+stay)\b/i],
+  greenCardNumber: [/\b(green\s+card|permanent\s+resident).*\b(number|no\.?|#)\b/i],
+  greenCardCategory: [/\bgreen\s+card.*\b(category|class)\b/i],
+  naturalizationDate: [/\b(naturalization|citizenship).*\bdate\b/i],
+  spouseName: [/\b(spouse|wife|husband|partner).*\bname\b/i],
+  spouseDateOfBirth: [/\b(spouse|wife|husband|partner).*\b(dob|birth)\b/i],
+  marriageDate: [/\b(marriage|wedding).*\bdate\b/i],
+  marriagePlace: [/\b(marriage|wedding).*\b(place|city|location)\b/i],
+  marriageCertificateNumber: [/\bmarriage.*\b(certificate|license).*\b(number|no\.?|#)\b/i],
+  fatherName: [/\b(father|dad|parent\s*1).*\bname\b/i, /\bfather\b/i],
+  motherName: [/\b(mother|mom|parent\s*2|maiden).*\bname\b/i, /\bmother\b/i],
+  emergencyContactName: [/\bemergency\s+contact.*\bname\b/i],
+  emergencyContactPhone: [/\bemergency\s+contact.*\b(phone|mobile|telephone|number)\b/i],
+};
+
+function fieldText(f: DetectedField): string {
+  return [f.section, f.label, f.name, f.placeholder, f.autocomplete, f.type]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+}
+
+function typeCompatible(type: string, key: ProfileKey): boolean {
+  const field = PROFILE_FIELDS.find((f) => f.key === key);
+  if (!field) return false;
+  const t = type.toLowerCase();
+  if (t === "checkbox" || t === "radio") return false;
+  if (t === "email") return key === "email";
+  if (t === "tel") return key === "phone" || key === "emergencyContactPhone";
+  if (t === "date" || t === "month" || t === "week") return field.kind === "date_static" || field.kind === "date_monotonic";
+  if (t === "number" || t === "range") return !["name", "address", "text"].includes(field.kind);
+  if (t === "textarea") return false;
+  return true;
+}
+
+function heuristicKeyForField(f: DetectedField, vault: VaultProfile, routedEntityId: string, entityWithKey: (key: string) => string | null): { key: ProfileKey; entityId: string } | null {
+  const text = fieldText(f);
+  if (isProtectedChoiceField(text)) return null;
+  let best: { key: ProfileKey; score: number } | null = null;
+  for (const field of PROFILE_FIELDS) {
+    const key = field.key as ProfileKey;
+    if (!typeCompatible(f.type, key)) continue;
+    const eid = vault[routedEntityId]?.[key] ? routedEntityId : entityWithKey(key);
+    if (!eid) continue;
+
+    let score = 0;
+    for (const re of FIELD_TEXT_HINTS[key] ?? []) {
+      if (re.test(text)) score += 6;
+    }
+    const label = field.label.toLowerCase();
+    if (text.includes(label)) score += 5;
+    for (const alias of field.aliases) {
+      if (text.includes(alias.toLowerCase())) score += 3;
+    }
+    if (field.category === "emergency" && /\bemergency\b/i.test(text)) score += 4;
+    if (field.category === "immigration" && /\b(visa|uscis|i-?94|petition|immigration)\b/i.test(text)) score += 2;
+    if (score > 0 && (!best || score > best.score)) best = { key, score };
+  }
+  if (!best || best.score < 3) return null;
+  const entityId = vault[routedEntityId]?.[best.key] ? routedEntityId : entityWithKey(best.key);
+  return entityId ? { key: best.key, entityId } : null;
+}
+
+function isProtectedChoiceField(text: string): boolean {
+  if (/\b(eeoc|self[-\s]?id|self[-\s]?identification|race|ethnicity|hispanic|latino|latinx|veteran|disability|sexual\s+orientation|transgender)\b/i.test(text)) return true;
+  if (/\bgender\b/i.test(text) && !/\b(passport|identity|personal\s+details?|biographical|demographic)\b/i.test(text)) return true;
+  return false;
+}
+
+function isReviewOnlyChoiceField(text: string): boolean {
+  if (isProtectedChoiceField(text)) return true;
+  return /\b(work\s+authorization|legally\s+authorized|employment\s+eligibility|immigration\s+sponsorship|require\s+sponsorship|privacy\s+acknowledgement|sms|whatsapp)\b/i.test(text);
+}
 
 // Internal helper — read canonical value for an entity's profile key.
 function canonicalOf(vault: VaultProfile, entityId: string, key: ProfileKey): string {
@@ -160,6 +277,10 @@ export async function matchFormFields(
   // the vault" footgun.
   for (const f of fields) {
     const routedEntityId = routeSectionToEntity(f.section, entities);
+    if (isReviewOnlyChoiceField(fieldText(f))) {
+      matches.push({ fieldId: f.id, profileKey: null, entityId: routedEntityId, confidence: "low", source: "heuristic", conflicted: false });
+      continue;
+    }
 
     const ac = f.autocomplete?.toLowerCase().trim();
     if (ac && AUTOCOMPLETE_MAP[ac]) {
@@ -195,6 +316,15 @@ export async function matchFormFields(
         });
         continue;
       }
+    }
+    const direct = heuristicKeyForField(f, vault, routedEntityId, entityWithKey);
+    if (direct) {
+      matches.push({
+        fieldId: f.id, profileKey: direct.key, entityId: direct.entityId,
+        confidence: "medium", source: "heuristic",
+        conflicted: conflictedOf(vault, direct.entityId, direct.key),
+      });
+      continue;
     }
     unresolved.push({ field: f, entityId: routedEntityId });
   }

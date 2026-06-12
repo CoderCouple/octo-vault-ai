@@ -30,7 +30,13 @@ export default defineManifest({
   side_panel: { default_path: "src/sidepanel/index.html" },
   background: { service_worker: "src/background/index.ts", type: "module" },
   content_scripts: [
-    { matches: ["<all_urls>"], js: ["src/content/index.ts"], run_at: "document_idle" },
+    {
+      matches: ["<all_urls>"],
+      js: ["src/content/index.ts"],
+      run_at: "document_idle",
+      all_frames: true,
+      match_about_blank: true,
+    },
   ],
   permissions: ["storage", "activeTab", "scripting", "sidePanel"],
   host_permissions: [

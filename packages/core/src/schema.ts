@@ -277,6 +277,10 @@ export const PROFILE_FIELDS = [
   // Contact
   { key: "email",        label: "Email",            aliases: ["e-mail", "email address"],                   sensitivity: "personal", kind: "contact", category: "contact" },
   { key: "phone",        label: "Phone",            aliases: ["mobile", "cell", "telephone"],               sensitivity: "personal", kind: "contact", category: "contact" },
+  { key: "linkedinProfile", label: "LinkedIn Profile", aliases: ["linkedin", "linkedin url", "linkedin profile url"], sensitivity: "personal", kind: "text", category: "contact" },
+  { key: "personalWebsite", label: "Personal Website", aliases: ["website", "personal site", "portfolio", "portfolio url"], sensitivity: "public", kind: "text", category: "contact" },
+  { key: "githubProfile", label: "GitHub Profile", aliases: ["github", "github url", "github profile"], sensitivity: "public", kind: "text", category: "contact" },
+  { key: "publicationsUrl", label: "Publications URL", aliases: ["publications", "google scholar", "scholar url"], sensitivity: "public", kind: "text", category: "contact" },
   { key: "addressLine1", label: "Address Line 1",   aliases: ["street", "street address", "address"],      sensitivity: "personal", kind: "address", category: "contact" },
   { key: "addressLine2", label: "Address Line 2",   aliases: ["apt", "unit", "suite"],                      sensitivity: "personal", kind: "address", category: "contact" },
   { key: "city",         label: "City",             aliases: ["town"],                                      sensitivity: "personal", kind: "address", category: "contact" },
@@ -303,6 +307,7 @@ export const PROFILE_FIELDS = [
 
   // Immigration — fields specifically on I-797, visa stamps, green cards, EADs, I-94
   { key: "visaType",             label: "Visa Type / Classification",  aliases: ["visa class", "visa category", "nonimmigrant classification"],     sensitivity: "personal",         kind: "text",           category: "immigration" },
+  { key: "uciNumber",            label: "UCI / Client ID",             aliases: ["uci", "unique client identifier", "client id", "client identifier"], sensitivity: "highly_sensitive", kind: "id_unique",      category: "immigration" },
   { key: "visaReceiptNumber",    label: "USCIS Receipt Number",        aliases: ["receipt number", "case number", "petition number", "i797 number"],  sensitivity: "highly_sensitive", kind: "id_unique",      category: "immigration" },
   { key: "visaValidFrom",        label: "Visa Validity From",          aliases: ["valid from", "petition valid from", "h1b start", "i797 valid from"], sensitivity: "personal",         kind: "date_monotonic", category: "immigration" },
   { key: "visaValidUntil",       label: "Visa Validity Until",         aliases: ["valid until", "petition valid until", "h1b expiry", "i797 expiry", "visa expiry", "expires"], sensitivity: "personal", kind: "date_monotonic", category: "immigration" },
@@ -393,11 +398,11 @@ export const DOC_AUTHORITY: Partial<Record<DocType, Partial<Record<ProfileKey, n
 
   // Immigration authority
   i797_approval_notice: {
-    visaBeneficiary: 1.0, visaType: 1.0, visaReceiptNumber: 1.0,
+    visaBeneficiary: 1.0, visaType: 1.0, uciNumber: 0.6, visaReceiptNumber: 1.0,
     visaValidFrom: 1.0, visaValidUntil: 1.0, visaPetitioner: 1.0,
     employerName: 0.9,
   },
-  visa_stamp: { visaType: 0.9, visaValidFrom: 0.9, visaValidUntil: 0.9 },
+  visa_stamp: { visaType: 0.9, uciNumber: 0.8, visaValidFrom: 0.9, visaValidUntil: 0.9 },
   green_card: {
     fullName: 0.95, dateOfBirth: 0.9, nationality: 0.9,
     greenCardNumber: 1.0, greenCardCategory: 1.0,

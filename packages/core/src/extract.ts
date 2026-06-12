@@ -121,6 +121,7 @@ export function classifyByKeywords(text: string): DocType | null {
 const DOC_TYPE_HINTS: Partial<Record<DocType, string>> = {
   i797_approval_notice: `This is a USCIS I-797 Approval Notice. Capture every one of:
 - visaType (H-1B, L-1, O-1, EB-1, etc.)
+- uciNumber (Canadian UCI / Client ID / Unique Client Identifier if shown)
 - visaReceiptNumber (3-letter prefix + 10 digits, e.g., EAC1234567890)
 - visaBeneficiary (the person on the notice)
 - visaPetitioner (the sponsoring employer)
@@ -158,10 +159,10 @@ const COMMON_PERSON_FIELDS: ProfileKey[] = [
 ];
 
 const ADDRESS_FIELDS: ProfileKey[] = ["addressLine1", "addressLine2", "city", "state", "postalCode", "country"];
-const CONTACT_FIELDS: ProfileKey[] = ["email", "phone"];
+const CONTACT_FIELDS: ProfileKey[] = ["email", "phone", "linkedinProfile", "personalWebsite", "githubProfile", "publicationsUrl"];
 const PASSPORT_FIELDS: ProfileKey[] = ["passportNumber", "passportIssuer", "passportIssueDate", "passportExpiryDate"];
 const IMMIGRATION_FIELDS: ProfileKey[] = [
-  "visaType", "visaReceiptNumber", "visaValidFrom", "visaValidUntil",
+  "visaType", "uciNumber", "visaReceiptNumber", "visaValidFrom", "visaValidUntil",
   "visaPetitioner", "visaBeneficiary", "i94Number", "i94ExpiryDate",
   "greenCardNumber", "greenCardCategory", "naturalizationDate",
 ];

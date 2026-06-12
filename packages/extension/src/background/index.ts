@@ -79,6 +79,7 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
       // Multi-entity matching (Phase C) + LLM-text augmentation (Phase E1).
       // Order: enrich → merge → match.
       const remote = await fetchProfileFromBridge() as VaultProfile | null;
+      let source: "desktop" | "extension" = remote && Object.keys(remote).length > 0 ? "desktop" : "extension";
       // Local IDB fallback throws "Vault is locked" when the extension's
       // own vault isn't unlocked. Catch that — we still want to attempt
       // a fill using whatever the desktop bridge can give us, and even
@@ -95,7 +96,6 @@ async function handle(msg: { type: string } & Record<string, unknown>): Promise<
         }
       }
       const entities = await fetchEntities();
-      const source = remote ? "desktop" : "extension";
       const llm = await cfg();
 
       const rawFields = (msg.fields as DetectedField[] | undefined) ?? [];
