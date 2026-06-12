@@ -333,13 +333,13 @@ function FullLayout() {
       <SidebarInset>
         <SiteHeader activeLabel={activeNav.label} ollamaOk={ollamaOk} />
         <div className="flex-1 overflow-auto">
-          {view === "documents" && <Documents />}
-          {view === "profile"   && <ProfileView />}
+          <div className={view === "documents" ? "block" : "hidden"}><Documents /></div>
+          {view === "profile" && <ProfileView />}
           {view === "conflicts" && <Conflicts />}
-          {view === "facts"     && <FactsGraph />}
-          {view === "chat"      && <Chat />}
-          {view === "entities"  && <Entities />}
-          {view === "settings"  && <SettingsView />}
+          {view === "facts" && <FactsGraph />}
+          {view === "chat" && <Chat />}
+          {view === "entities" && <Entities />}
+          {view === "settings" && <SettingsView />}
         </div>
         <footer className="border-t px-4 py-1.5 text-[10px] text-muted-foreground">
           Processed on this device · {settings.ollamaUrl}
@@ -408,4 +408,3 @@ function SourcePill() {
     </button>
   );
 }
-

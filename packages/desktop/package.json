@@ -25,9 +25,11 @@
   },
   "comment": "Runtime deps in main process need real install (native modules can't be bundled). Keep this list minimal — just the native ones. UI / renderer deps stay in devDependencies because Vite bundles them.",
   "dependencies": {
+    "@llamaindex/liteparse": "^2.0.8",
     "better-sqlite3-multiple-ciphers": "^11.7.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "@octovault/core": "0.0.1",
     "@octovault/ui": "0.0.1",
     "@types/better-sqlite3": "^7.6.12",
@@ -36,7 +38,6 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
-    "@electron/rebuild": "^3.7.1",
     "electron": "33.4.11",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",

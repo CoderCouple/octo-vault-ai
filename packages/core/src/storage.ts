@@ -3,10 +3,12 @@
 // live in their own packages and implement this interface.
 
 import type {
-  DocType, Entity, FieldCandidate, FieldRecord, Profile, ProfileKey, Sensitivity, VaultProfile,
+  DocType, EducationRecord, Entity, Event, ExperienceRecord, FieldCandidate, FieldRecord,
+  Profile, ProfileKey, RelationshipEdge, Sensitivity, VaultProfile,
 } from "./schema";
 import { initialsFor, SELF_ENTITY_ID } from "./schema";
-import { resolve } from "./resolver";
+import { canonicalValue, resolve } from "./resolver";
+import type { EmbeddingRecord } from "./qa";
 
 export interface StoredDocument {
   id: string;
@@ -42,6 +44,10 @@ export interface Settings {
   // decorative / non-US-formatted certificates. Tesseract remains
   // the fallback if the vision model is unreachable or not installed.
   visionModel: string;
+  // PDF text parser. "pdfjs" is the browser-safe default used by both
+  // desktop and extension. "liteparse" is desktop-only and routes PDF
+  // parsing through a native local parser in Electron main.
+  pdfParser: "pdfjs" | "liteparse";
   autoFillPrompt: boolean;
   appLockMinutes: number;
   requireUnlockForSensitive: boolean;
@@ -71,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   llmModel: "qwen3:8b",
   embeddingModel: "nomic-embed-text",
   visionModel: "qwen3-vl:8b",
+  pdfParser: "liteparse",
   autoFillPrompt: true,
   appLockMinutes: 5,
   requireUnlockForSensitive: true,
@@ -326,6 +333,100 @@ export async function addUserCandidate(
     userPinned: true,
   };
   await addCandidates(storage, [candidate]);
+}
+
+export async function addDocumentSourceToField(
+  storage: StorageAdapter,
+  entityId: string,
+  key: ProfileKey,
+  documentId: string,
+): Promise<void> {
+  const [record, doc] = await Promise.all([
+    storage.getRecord(entityId, key),
+    storage.getDocument(documentId),
+  ]);
+  if (!record || !doc) return;
+  const canonical = canonicalValue(record);
+  if (!canonical) return;
+  if (record.candidates.some((c) => !c.dismissedAt && c.source.documentId === documentId)) return;
+
+  const candidate: FieldCandidate = {
+    id: crypto.randomUUID(),
+    entityId,
+    fieldKey: key,
+    value: canonical.value,
+    normalizedValue: canonical.normalizedValue,
+    confidence: "medium",
+    source: { documentId },
+    docType: doc.docType,
+    extractedAt: Date.now(),
+    userEdited: true,
+  };
+  await addCandidates(storage, [candidate]);
+}
+
+export async function mergeEntities(
+  storage: StorageAdapter,
+  sourceEntityId: string,
+  targetEntityId: string,
+): Promise<void> {
+  if (!sourceEntityId || !targetEntityId || sourceEntityId === targetEntityId) return;
+  if (sourceEntityId === SELF_ENTITY_ID) throw new Error("Cannot merge Self into another entity");
+
+  const sourceProfile = await storage.getProfile(sourceEntityId);
+  for (const record of Object.values(sourceProfile)) {
+    if (!record) continue;
+    const moved: FieldCandidate[] = record.candidates.map((c) => ({ ...c, entityId: targetEntityId }));
+    await addCandidates(storage, moved);
+    await storage.deleteRecord(sourceEntityId, record.key);
+  }
+
+  for (const doc of await storage.listDocuments()) {
+    if (doc.entityId === sourceEntityId) {
+      await storage.saveDocument({ ...doc, entityId: targetEntityId });
+    }
+  }
+
+  for (const record of await storage.listEducation(sourceEntityId)) {
+    await storage.deleteEducation(record.id);
+    await storage.saveEducation({ ...record, entityId: targetEntityId } as EducationRecord);
+  }
+  for (const record of await storage.listExperience(sourceEntityId)) {
+    await storage.deleteExperience(record.id);
+    await storage.saveExperience({ ...record, entityId: targetEntityId } as ExperienceRecord);
+  }
+
+  const embeddings = await storage.listEmbeddings();
+  const movedEmbeddings: EmbeddingRecord[] = embeddings
+    .filter((e) => e.entityId === sourceEntityId)
+    .map((e) => ({ ...e, entityId: targetEntityId }));
+  if (movedEmbeddings.length) await storage.saveEmbeddings(movedEmbeddings);
+
+  for (const rel of await storage.listRelationships()) {
+    if (rel.fromEntityId !== sourceEntityId && rel.toEntityId !== sourceEntityId) continue;
+    const next: RelationshipEdge = {
+      ...rel,
+      fromEntityId: rel.fromEntityId === sourceEntityId ? targetEntityId : rel.fromEntityId,
+      toEntityId: rel.toEntityId === sourceEntityId ? targetEntityId : rel.toEntityId,
+      updatedAt: Date.now(),
+    };
+    if (next.fromEntityId === next.toEntityId) await storage.deleteRelationship(rel.id);
+    else await storage.saveRelationship(next);
+  }
+
+  for (const event of await storage.listEvents()) {
+    if (!event.participants.some((p) => p.entityId === sourceEntityId)) continue;
+    const participants = event.participants.map((p) => ({
+      ...p,
+      entityId: p.entityId === sourceEntityId ? targetEntityId : p.entityId,
+    }));
+    const deduped = participants.filter((p, i) =>
+      participants.findIndex((q) => q.entityId === p.entityId && q.role === p.role) === i,
+    );
+    await storage.saveEvent({ ...event, participants: deduped, updatedAt: Date.now() } as Event);
+  }
+
+  await storage.deleteEntity(sourceEntityId);
 }
 
 // Re-export Sensitivity for adapters/UI conveniences.

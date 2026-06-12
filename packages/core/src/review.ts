@@ -10,7 +10,8 @@
 // audit every fact by hand and catches semantic mistakes the
 // deterministic pass cannot see.
 
-import { generateJson, type OllamaConfig } from "./ollama";
+import { generateJson, type GenerateOptions, type OllamaConfig } from "./ollama";
+import { sanitizeEntityName } from "./sanitize";
 import type { FieldCandidate } from "./schema";
 
 interface ReviewEntry {
@@ -66,11 +67,14 @@ export interface ReviewResult {
   entityReason?: string;
 }
 
+export type GenerateJsonTransport = <T>(opts: GenerateOptions) => Promise<T>;
+
 export async function reviewExtraction(
   cfg: OllamaConfig,
   text: string,
   candidates: Omit<FieldCandidate, "entityId">[],
   entityName: string | null,
+  opts: { signal?: AbortSignal; generateJson?: GenerateJsonTransport } = {},
 ): Promise<ReviewResult> {
   if (candidates.length === 0 && !entityName) {
     return { kept: [], rejected: [], corrected: [], entityName, entityNameChanged: false };
@@ -116,10 +120,12 @@ Return JSON only:
 
   let review: ReviewResponse;
   try {
-    review = await generateJson<ReviewResponse>(cfg, {
+    const generate = opts.generateJson ?? (<T>(options: GenerateOptions) => generateJson<T>(cfg, options));
+    review = await generate<ReviewResponse>({
       system: "You are an extraction-QA reviewer. Be strict and return JSON only.",
       prompt,
       format: REVIEW_SCHEMA,
+      signal: opts.signal,
     });
   } catch (e) {
     // Reviewer failed — keep originals, don't block the import.
@@ -155,9 +161,10 @@ Return JSON only:
     }
   }
 
+  const suggestedEntityName = sanitizeEntityName(review.suggestedEntityName?.trim() || null);
   const newEntityName =
-    review.entityNameOk === false && review.suggestedEntityName?.trim()
-      ? review.suggestedEntityName.trim()
+    review.entityNameOk === false && suggestedEntityName
+      ? suggestedEntityName
       : entityName;
 
   return {

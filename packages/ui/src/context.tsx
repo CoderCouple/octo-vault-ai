@@ -8,7 +8,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import {
   addUserCandidate, ensureSelfEntity, normalizeValue, resolveOrCreateEntity, SELF_ENTITY_ID,
   type AskOptions, type Entity, type ExtractionResult, type QaResult,
-  type Settings, type StorageAdapter, type StoredDocument,
+  type ExtractedPdf, type PdfExtractOptions, type Settings, type StorageAdapter, type StoredDocument,
 } from "@octovault/core";
 
 export interface VaultSource {
@@ -40,6 +40,9 @@ export interface AppHost {
   // null means "fall back to tesseract." Implementations may cache
   // a "model installed" check across calls.
   visionEngine?(): Promise<import("@octovault/core").VisionEngine | null>;
+  // Optional desktop-only fast path. When absent or when it fails,
+  // Documents falls back to core's browser-safe PDF.js/Tesseract path.
+  parsePdfText?(file: File, opts?: PdfExtractOptions): Promise<ExtractedPdf>;
   // Vault lifecycle. Both surfaces support this — extension uses
   // WebCrypto + the IDB auth blob; desktop uses SQLCipher via IPC.
   vaultExists(): Promise<boolean>;

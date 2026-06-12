@@ -281,7 +281,11 @@ export const store = {
   },
   saveEmbeddings(records: { id: string; documentId?: string; entityId: string; kind: string }[]) {
     const d = requireDb();
-    const stmt = d.prepare("INSERT INTO embeddings(id, document_id, entity_id, kind, data) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data");
+    const stmt = d.prepare(
+      "INSERT INTO embeddings(id, document_id, entity_id, kind, data) VALUES (?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET document_id = excluded.document_id, entity_id = excluded.entity_id, " +
+      "kind = excluded.kind, data = excluded.data"
+    );
     const tx = d.transaction((rs: typeof records) => {
       for (const r of rs) stmt.run(r.id, r.documentId ?? null, r.entityId, r.kind, JSON.stringify(r));
     });

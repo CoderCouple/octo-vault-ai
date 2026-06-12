@@ -12,7 +12,8 @@ import {
   addCandidates, chunkText, fieldByKey,
   extractImageText,
   extractPdfText,
-  type EmbeddingRecord, type FieldCandidate, type StoredDocument,
+  SELF_ENTITY_ID,
+  type EmbeddingRecord, type Entity, type FieldCandidate, type StoredDocument,
 } from "@octovault/core";
 import { useAppContext } from "../context";
 import { Button } from "../components/ui/button";
@@ -52,10 +53,99 @@ const STATE_LABELS: Record<JobState, string> = {
   error: "Error",
 };
 
+const EMBED_CONCURRENCY = 4;
+
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      out[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+interface EmbeddingTask {
+  text: string;
+  kind: EmbeddingRecord["kind"];
+  entityId: string;
+  documentId: string;
+  fieldKey?: FieldCandidate["fieldKey"];
+  page?: number;
+}
+
+async function embedTasks(
+  tasks: EmbeddingTask[],
+  embed: (text: string) => Promise<number[]>,
+  onProgress?: (done: number, total: number) => void,
+): Promise<EmbeddingRecord[]> {
+  let done = 0;
+  return mapLimit(tasks, EMBED_CONCURRENCY, async (task) => {
+    const vector = await embed(task.text);
+    done++;
+    onProgress?.(done, tasks.length);
+    return {
+      id: crypto.randomUUID(),
+      kind: task.kind,
+      entityId: task.entityId,
+      documentId: task.documentId,
+      fieldKey: task.fieldKey,
+      page: task.page,
+      text: task.text,
+      vector,
+    };
+  });
+}
+
+const FILE_ENTITY_STOP_WORDS = new Set([
+  "appointment", "confirmation", "passport", "visa", "employment", "letter",
+  "certificate", "latest", "new", "old", "i797", "h1b", "voe", "paystub",
+  "marriage", "birth", "death", "license", "card", "doc", "document",
+]);
+
+function titleCaseName(tokens: string[]): string | null {
+  const nameTokens = tokens
+    .map((t) => t.replace(/[^a-z]/gi, ""))
+    .filter((t) => t.length >= 2 && !FILE_ENTITY_STOP_WORDS.has(t.toLowerCase()));
+  if (nameTokens.length === 0 || nameTokens.length > 4) return null;
+  return nameTokens.map((t) => t[0].toUpperCase() + t.slice(1).toLowerCase()).join(" ");
+}
+
+function inferEntityNameFromFileName(fileName: string, knownEntities: Entity[]): string | null {
+  const base = fileName.replace(/\.[^.]+$/, "");
+  const lower = base.toLowerCase();
+  for (const entity of knownEntities) {
+    if (entity.id === SELF_ENTITY_ID) continue;
+    const tokens = entity.name.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+    if (tokens.length && tokens.every((t) => lower.includes(t))) return entity.name;
+  }
+
+  const parts = base.split(/\s*[-–—]\s*/).filter(Boolean);
+  const suffix = parts.length > 1 ? titleCaseName(parts[parts.length - 1].split(/\s+/)) : null;
+  if (suffix) return suffix;
+
+  const tokens = base.split(/\s+/);
+  const leading: string[] = [];
+  for (const token of tokens) {
+    const clean = token.replace(/[^a-z]/gi, "").toLowerCase();
+    if (!clean) continue;
+    if (FILE_ENTITY_STOP_WORDS.has(clean)) break;
+    leading.push(token);
+  }
+  return titleCaseName(leading);
+}
+
 export function Documents() {
   const {
     host, storage, documents, refreshDocuments, readOnly, source,
-    activeEntityId, resolveEntityFromName, entities, setActiveEntityId,
+    activeEntityId, resolveEntityFromName, entities, setActiveEntityId, settings,
   } = useAppContext();
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [pendingDelete, setPendingDelete] = useState<StoredDocument | null>(null);
@@ -153,18 +243,30 @@ export function Documents() {
 
       if (lower.endsWith(".pdf")) {
         updateJob(id, { state: "reading", progress: 0.05, message: "Reading PDF" });
-        const out = await extractPdfText(job.file, {
+        const useLiteParse = settings.pdfParser === "liteparse" && !!host.parsePdfText;
+        const parseOpts = {
           visionEngine,
-          onProgress: (s, f) => updateJob(id, {
+          onProgress: (s: string, f: number) => updateJob(id, {
             state: s.toLowerCase().includes("ocr") ? "ocr" : "reading",
             progress: 0.05 + f * 0.4, message: s,
           }),
-          onOcrProgress: (p) => updateJob(id, {
+          onOcrProgress: (p: { page: number; totalPages: number }) => updateJob(id, {
             state: "ocr",
             progress: 0.05 + 0.4 * (p.page / p.totalPages),
             message: `OCR page ${p.page}/${p.totalPages}`,
           }),
-        });
+        };
+        let out;
+        if (useLiteParse) {
+          try {
+            updateJob(id, { state: "reading", progress: 0.08, message: "Parsing with LiteParse" });
+            out = await host.parsePdfText!(job.file, parseOpts);
+          } catch (e) {
+            console.warn("[ingest] LiteParse failed; falling back to PDF.js:", e);
+            updateJob(id, { state: "reading", progress: 0.08, message: "LiteParse failed — falling back" });
+          }
+        }
+        out ??= await extractPdfText(job.file, parseOpts);
         text = out.text; pageCount = out.pageCount; ocrUsed = out.ocrUsed;
       } else if (job.file.type.startsWith("image/")) {
         updateJob(id, { state: "ocr", progress: 0.1, message: "OCR image" });
@@ -191,9 +293,12 @@ export function Documents() {
       if (review?.entityNameChanged) cleanups.push(`re-tagged to ${entityName}`);
       if (cleanups.length) updateJob(id, { message: `Sanitization: ${cleanups.join(", ")}` });
 
-      const entity = entityName
-        ? await resolveEntityFromName(entityName, relationshipHint)
-        : { id: activeEntityId };
+      const fileEntityName = inferEntityNameFromFileName(job.fileName, entities);
+      const entity = fileEntityName
+        ? await resolveEntityFromName(fileEntityName, relationshipHint)
+        : entityName
+          ? await resolveEntityFromName(entityName, relationshipHint)
+          : { id: activeEntityId };
 
       // Prefer a path reference over a copied data URL — zero storage
       // cost and the viewer reads from disk on demand. Electron 32+
@@ -308,14 +413,17 @@ export function Documents() {
       // Best-effort embedding for chat.
       updateJob(id, { state: "indexing", progress: 0.7, message: "Indexing for chat" });
       try {
-        const embeddings: EmbeddingRecord[] = [];
+        const tasks: EmbeddingTask[] = [];
         for (const c of withEntity) {
           const label = fieldByKey(c.fieldKey).label;
           const t = `${label}: ${c.value}`;
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "fact",
-            entityId: c.entityId, documentId: doc.id, fieldKey: c.fieldKey, page: c.source.page,
-            text: t, vector: await host.embed(t),
+          tasks.push({
+            kind: "fact",
+            entityId: c.entityId,
+            documentId: doc.id,
+            fieldKey: c.fieldKey,
+            page: c.source.page,
+            text: t,
           });
         }
         // Embed long-tail "extras" the same way as typed facts so they
@@ -324,42 +432,49 @@ export function Documents() {
         // label drives both the embedding and the citation display.
         for (const ex of extras) {
           const t = `${ex.label}: ${ex.value}`;
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "fact",
-            entityId: entity.id, documentId: doc.id, page: ex.source.page,
-            text: t, vector: await host.embed(t),
+          tasks.push({
+            kind: "fact",
+            entityId: entity.id,
+            documentId: doc.id,
+            page: ex.source.page,
+            text: t,
           });
         }
         const chunks = chunkText(doc.text);
-        for (let i = 0; i < chunks.length; i++) {
-          updateJob(id, {
-            progress: 0.7 + 0.25 * ((i + 1) / Math.max(chunks.length, 1)),
-            message: `Indexing chunk ${i + 1}/${chunks.length}`,
-          });
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "chunk",
-            entityId: entity.id, documentId: doc.id,
-            text: chunks[i], vector: await host.embed(chunks[i]),
+        for (const chunk of chunks) {
+          tasks.push({
+            kind: "chunk",
+            entityId: entity.id,
+            documentId: doc.id,
+            text: chunk,
           });
         }
         for (const e of education) {
           const t = [e.degree, e.field, "at", e.institution, e.startDate, "to", e.endDate].filter(Boolean).join(" ");
           if (!t) continue;
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "chunk",
-            entityId: entity.id, documentId: doc.id,
-            text: `Education: ${t}`, vector: await host.embed(`Education: ${t}`),
+          tasks.push({
+            kind: "chunk",
+            entityId: entity.id,
+            documentId: doc.id,
+            text: `Education: ${t}`,
           });
         }
         for (const e of experience) {
           const t = [e.role, "at", e.company, e.startDate, "to", e.endDate || "present", e.location].filter(Boolean).join(" ");
           if (!t) continue;
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "chunk",
-            entityId: entity.id, documentId: doc.id,
-            text: `Experience: ${t}`, vector: await host.embed(`Experience: ${t}`),
+          tasks.push({
+            kind: "chunk",
+            entityId: entity.id,
+            documentId: doc.id,
+            text: `Experience: ${t}`,
           });
         }
+        const embeddings = await embedTasks(tasks, host.embed, (done, total) => {
+          updateJob(id, {
+            progress: 0.7 + 0.25 * (done / Math.max(total, 1)),
+            message: `Indexing ${done}/${total}`,
+          });
+        });
         if (embeddings.length) await storage.saveEmbeddings(embeddings);
       } catch (e) {
         console.warn("[indexing] embeddings failed:", e);
@@ -479,9 +594,12 @@ export function Documents() {
     try {
       const { docType, candidates, education, experience, entityName, relationshipHint } =
         await host.extractFromText(d.id, d.text);
-      const entity = entityName
-        ? await resolveEntityFromName(entityName, relationshipHint)
-        : { id: d.entityId };
+      const fileEntityName = inferEntityNameFromFileName(d.name, entities);
+      const entity = fileEntityName
+        ? await resolveEntityFromName(fileEntityName, relationshipHint)
+        : entityName
+          ? await resolveEntityFromName(entityName, relationshipHint)
+          : { id: d.entityId };
       // Update the doc's classification and entity (in case extractor improved).
       await storage.saveDocument({ ...d, docType, entityId: entity.id });
       const withEntity: FieldCandidate[] = candidates.map((c) => ({ ...c, entityId: entity.id }));
@@ -490,23 +608,32 @@ export function Documents() {
       for (const e of experience) await storage.saveExperience({ ...e, entityId: entity.id });
       updateJob(job.id, { state: "indexing", progress: 0.7, message: "Indexing" });
       try {
-        const embeddings: EmbeddingRecord[] = [];
+        const tasks: EmbeddingTask[] = [];
         for (const c of withEntity) {
           const label = fieldByKey(c.fieldKey).label;
           const t = `${label}: ${c.value}`;
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "fact",
-            entityId: c.entityId, documentId: d.id, fieldKey: c.fieldKey,
-            text: t, vector: await host.embed(t),
+          tasks.push({
+            kind: "fact",
+            entityId: c.entityId,
+            documentId: d.id,
+            fieldKey: c.fieldKey,
+            text: t,
           });
         }
         for (const chunk of chunkText(d.text)) {
-          embeddings.push({
-            id: crypto.randomUUID(), kind: "chunk",
-            entityId: entity.id, documentId: d.id,
-            text: chunk, vector: await host.embed(chunk),
+          tasks.push({
+            kind: "chunk",
+            entityId: entity.id,
+            documentId: d.id,
+            text: chunk,
           });
         }
+        const embeddings = await embedTasks(tasks, host.embed, (done, total) => {
+          updateJob(job.id, {
+            progress: 0.7 + 0.25 * (done / Math.max(total, 1)),
+            message: `Indexing ${done}/${total}`,
+          });
+        });
         if (embeddings.length) await storage.saveEmbeddings(embeddings);
       } catch (e) { console.warn("[reextract] embed:", e); }
       updateJob(job.id, { state: "done", progress: 1, message: `Re-extracted ${candidates.length} fields` });

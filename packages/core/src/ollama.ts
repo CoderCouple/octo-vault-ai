@@ -18,6 +18,7 @@ export interface VisionOptions {
   system?: string;
   temperature?: number;
   model?: string;          // override cfg.visionModel
+  signal?: AbortSignal;
 }
 
 // Format can be:
@@ -33,7 +34,11 @@ export interface GenerateOptions {
   system?: string;
   format?: FormatOption;
   temperature?: number;
+  signal?: AbortSignal;
 }
+
+const GENERATE_KEEP_ALIVE = "30m";
+const VISION_KEEP_ALIVE = "5m";
 
 export async function isReachable(cfg: OllamaConfig): Promise<boolean> {
   try {
@@ -90,12 +95,15 @@ export async function generateStream(
     system: opts.system,
     stream: true,
     format: opts.format,
+    keep_alive: GENERATE_KEEP_ALIVE,
+    think: false,
     options: { temperature: opts.temperature ?? 0.1 },
   };
   const r = await fetch(`${cfg.url}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
   if (!r.ok || !r.body) throw new Error(`Ollama generateStream failed: ${r.status}`);
   const reader = r.body.getReader();
@@ -134,12 +142,14 @@ export async function vision(cfg: OllamaConfig, opts: VisionOptions): Promise<st
     system: opts.system,
     images: opts.images,
     stream: false,
+    keep_alive: VISION_KEEP_ALIVE,
     options: { temperature: opts.temperature ?? 0.1 },
   };
   const r = await fetch(`${cfg.url}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
   if (!r.ok) throw new Error(`Ollama vision failed: ${r.status}`);
   const data = (await r.json()) as { response: string };
@@ -154,12 +164,15 @@ export async function generate(cfg: OllamaConfig, opts: GenerateOptions): Promis
     stream: false,
     // Pass JSON schemas as-is; pass "json" string for loose JSON mode.
     format: opts.format,
+    keep_alive: GENERATE_KEEP_ALIVE,
+    think: false,
     options: { temperature: opts.temperature ?? 0.1 },
   };
   const r = await fetch(`${cfg.url}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
   if (!r.ok) throw new Error(`Ollama generate failed: ${r.status}`);
   const data = (await r.json()) as { response: string };

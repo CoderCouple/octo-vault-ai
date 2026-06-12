@@ -3,9 +3,9 @@
 // the entity cannot be deleted and its relationship stays "self".
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Plus, Trash2, Users } from "lucide-react";
+import { ArrowRight, GitMerge, Plus, Trash2, Users } from "lucide-react";
 import {
-  initialsFor, isSymmetricRelationship, SELF_ENTITY_ID,
+  initialsFor, isSymmetricRelationship, mergeEntities, SELF_ENTITY_ID,
   type Entity, type Relationship, type RelationshipEdge, type RelationshipKind,
 } from "@octovault/core";
 import { useAppContext } from "../context";
@@ -40,6 +40,17 @@ export function Entities() {
   const [draft, setDraft] = useState<{ name: string; relationship: Relationship }>({ name: "", relationship: "spouse" });
   const [pendingDelete, setPendingDelete] = useState<Entity | null>(null);
   const [cascade, setCascade] = useState<{ docs: number; education: number; experience: number; fields: number; relationships: number } | null>(null);
+  const [pendingMerge, setPendingMerge] = useState<Entity | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [mergeImpact, setMergeImpact] = useState<{
+    docs: number;
+    education: number;
+    experience: number;
+    fields: number;
+    relationships: number;
+    events: number;
+    embeddings: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!pendingDelete) { setCascade(null); return; }
@@ -63,6 +74,37 @@ export function Entities() {
     })();
     return () => { cancelled = true; };
   }, [pendingDelete, storage, documents]);
+
+  useEffect(() => {
+    if (!pendingMerge) { setMergeImpact(null); setMergeTargetId(""); return; }
+    const id = pendingMerge.id;
+    const targets = entities.filter((e) => e.id !== id);
+    if (!targets.some((e) => e.id === mergeTargetId)) {
+      setMergeTargetId(targets.find((e) => e.id === SELF_ENTITY_ID)?.id ?? targets[0]?.id ?? "");
+    }
+    let cancelled = false;
+    void (async () => {
+      const [edu, exp, rels, profile, events, embeddings] = await Promise.all([
+        storage.listEducation(id),
+        storage.listExperience(id),
+        storage.listRelationships(),
+        storage.getProfile(id),
+        storage.listEvents(),
+        storage.listEmbeddings(),
+      ]);
+      if (cancelled) return;
+      setMergeImpact({
+        docs: documents.filter((d) => d.entityId === id).length,
+        education: edu.length,
+        experience: exp.length,
+        fields: Object.keys(profile).length,
+        relationships: rels.filter((r) => r.fromEntityId === id || r.toEntityId === id).length,
+        events: events.filter((event) => event.participants.some((p) => p.entityId === id)).length,
+        embeddings: embeddings.filter((e) => e.entityId === id).length,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [pendingMerge, mergeTargetId, storage, documents, entities]);
 
   async function createEntity() {
     if (!draft.name.trim() || readOnly) return;
@@ -98,6 +140,20 @@ export function Entities() {
     if (activeEntityId === e.id) setActiveEntityId(SELF_ENTITY_ID);
     setPendingDelete(null);
   }
+
+  async function confirmMerge() {
+    if (!pendingMerge || !mergeTargetId || readOnly) return;
+    await mergeEntities(storage, pendingMerge.id, mergeTargetId);
+    await refreshEntities();
+    await refreshDocuments();
+    if (activeEntityId === pendingMerge.id) setActiveEntityId(mergeTargetId);
+    setPendingMerge(null);
+    setMergeTargetId("");
+    setMergeImpact(null);
+  }
+
+  const mergeTargets = pendingMerge ? entities.filter((e) => e.id !== pendingMerge.id) : [];
+  const mergeTargetName = entities.find((e) => e.id === mergeTargetId)?.name ?? "the selected entity";
 
   return (
     <div className="space-y-4 p-4">
@@ -153,6 +209,7 @@ export function Entities() {
             onActivate={() => setActiveEntityId(e.id)}
             onRename={(n) => void renameEntity(e, n)}
             onChangeRelationship={(r) => void changeRelationship(e, r)}
+            onMerge={() => setPendingMerge(e)}
             onDelete={() => setPendingDelete(e)}
           />
         ))}
@@ -185,13 +242,48 @@ export function Entities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!pendingMerge} onOpenChange={(o) => !o && setPendingMerge(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Merge {pendingMerge?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Move this duplicate entity into another person, then delete the duplicate entity.
+            </AlertDialogDescription>
+            <div className="space-y-2 pt-2">
+              <Label className="text-xs">Merge into</Label>
+              <EntityPicker entities={mergeTargets} value={mergeTargetId} onChange={setMergeTargetId} />
+            </div>
+            {mergeImpact ? (
+              <div className="mt-2 rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">Will move into {mergeTargetName}:</div>
+                <ul className="mt-2 list-disc space-y-0.5 pl-5">
+                  <li>{mergeImpact.docs} document{mergeImpact.docs === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.fields} stored field{mergeImpact.fields === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.education} education record{mergeImpact.education === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.experience} experience record{mergeImpact.experience === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.relationships} relationship edge{mergeImpact.relationships === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.events} event{mergeImpact.events === 1 ? "" : "s"}</li>
+                  <li>{mergeImpact.embeddings} embedding{mergeImpact.embeddings === 1 ? "" : "s"}</li>
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Computing impact...</p>
+            )}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmMerge()} disabled={!mergeTargetId}>Merge</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 function EntityCard({
   entity, active, docCount, readOnly,
-  onActivate, onRename, onChangeRelationship, onDelete,
+  onActivate, onRename, onChangeRelationship, onMerge, onDelete,
 }: {
   entity: Entity;
   active: boolean;
@@ -200,6 +292,7 @@ function EntityCard({
   onActivate: () => void;
   onRename: (n: string) => void;
   onChangeRelationship: (r: Relationship) => void;
+  onMerge: () => void;
   onDelete: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
@@ -248,14 +341,24 @@ function EntityCard({
           </div>
         </div>
         {!readOnly && !isSelf && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            title="Delete entity"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => { e.stopPropagation(); onMerge(); }}
+              title="Merge entity"
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              title="Delete entity"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         )}
       </div>
 

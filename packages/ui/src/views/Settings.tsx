@@ -38,9 +38,10 @@ export function SettingsView() {
       url: settings.ollamaUrl,
       llmModel: settings.llmModel,
       embeddingModel: settings.embeddingModel,
+      visionModel: settings.visionModel,
     };
     void listModels(cfg).then(setModels);
-  }, [settings.ollamaUrl, settings.llmModel, settings.embeddingModel]);
+  }, [settings.ollamaUrl, settings.llmModel, settings.embeddingModel, settings.visionModel]);
 
   return (
     <div className="space-y-5 p-3 text-sm">
@@ -73,6 +74,30 @@ export function SettingsView() {
             options={models.filter((m) => m.includes("embed"))}
             onChange={(v) => void setSettings({ embeddingModel: v })}
           />
+        </Field>
+        <Field
+          label="Vision OCR model"
+          hint="Vision OCR can be much slower on scanned documents. Disable it to use bundled Tesseract instead."
+        >
+          <Picker
+            value={settings.visionModel}
+            options={["", ...models.filter((m) => /\b(vl|vision|llava|minicpm)\b/i.test(m))]}
+            emptyLabel="Disabled — use Tesseract"
+            onChange={(v) => void setSettings({ visionModel: v })}
+          />
+        </Field>
+        <Field
+          label="PDF parser"
+          hint="LiteParse is desktop-only and native. Keep PDF.js if you want the most conservative path."
+        >
+          <select
+            value={settings.pdfParser}
+            onChange={(e) => void setSettings({ pdfParser: e.target.value as "pdfjs" | "liteparse" })}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="pdfjs">PDF.js + bundled OCR</option>
+            <option value="liteparse">LiteParse native parser</option>
+          </select>
         </Field>
       </Section>
 
@@ -313,8 +338,8 @@ function ThemeOption({
   );
 }
 
-function Picker({ value, options, onChange }: {
-  value: string; options: string[]; onChange: (v: string) => void;
+function Picker({ value, options, emptyLabel, onChange }: {
+  value: string; options: string[]; emptyLabel?: string; onChange: (v: string) => void;
 }) {
   if (options.length === 0) {
     return <Input value={value} onChange={(e) => onChange(e.target.value)} />;
@@ -326,7 +351,7 @@ function Picker({ value, options, onChange }: {
       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       {!options.includes(value) && <option value={value}>{value} (not installed)</option>}
-      {options.map((m) => <option key={m} value={m}>{m}</option>)}
+      {options.map((m) => <option key={m || "__empty"} value={m}>{m || emptyLabel || "Disabled"}</option>)}
     </select>
   );
 }

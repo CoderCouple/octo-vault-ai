@@ -67,6 +67,8 @@ const vault = {
 const doc = {
   readBytes: (docId: string) =>
     ipcRenderer.invoke("doc.readBytes", docId) as Promise<{ bytes: Uint8Array; mimeType?: string } | null>,
+  parsePdfLite: (input: { filePath?: string; bytes?: Uint8Array; ocrEnabled?: boolean }) =>
+    ipcRenderer.invoke("doc.parsePdfLite", input) as Promise<{ text: string; pageCount: number; pageTexts: string[]; ocrUsed: boolean }>,
   // Electron 32+ removed File.path on dropped/picked Files. webUtils
   // is the official replacement. Returns the absolute path or ""
   // for synthetic Files.

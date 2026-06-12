@@ -11,18 +11,23 @@ import {
   ReactFlow, Background, Controls, Handle, Position, MarkerType,
   BaseEdge, EdgeLabelRenderer, getSmoothStepPath,
   useNodesState, useEdgesState, useReactFlow, ReactFlowProvider,
-  type Node, type Edge, type NodeProps, type EdgeProps,
+  type Connection, type Node, type Edge, type NodeProps, type EdgeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Check, FileText, LayoutGrid, Pencil, ScanLine, Users, X } from "lucide-react";
+import { Check, FileText, LayoutGrid, Pencil, Plus, ScanLine, Trash2, UserPlus, Users, X } from "lucide-react";
 import {
-  addUserCandidate, canonicalValue, deriveFacts, derivedRelationshipEdges,
-  dismissCandidate, fieldByKey, initialsFor, normalizeValue,
+  addDocumentSourceToField, addUserCandidate, canonicalValue, deriveFacts, derivedRelationshipEdges,
+  dismissCandidate, fieldByKey, initialsFor, isSymmetricRelationship, normalizeValue,
+  PROFILE_FIELDS, SELF_ENTITY_ID,
   type ConflictState, type Entity, type FieldRecord, type ProfileKey,
-  type StoredDocument, type VaultProfile,
+  type Relationship, type RelationshipEdge, type RelationshipKind, type StoredDocument, type VaultProfile,
 } from "@octovault/core";
 import { useAppContext } from "../context";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { cn } from "../lib/utils";
 
 interface DocNodeData extends Record<string, unknown> {
@@ -47,6 +52,7 @@ interface EntityNodeData extends Record<string, unknown> {
   focused?: boolean;
 }
 interface EdgeData extends Record<string, unknown> {
+  kind?: "source" | "relationship";
   onDelete?: () => Promise<void>;
 }
 
@@ -55,6 +61,13 @@ const EDGE_TYPES = { deletable: DeletableEdge };
 
 type ViewMode = "source" | "entity";
 const VIEW_KEY = "octovault.factsGraph.viewMode";
+const RELATIONSHIPS: Relationship[] = ["spouse", "partner", "child", "parent", "sibling", "dependent", "other"];
+const RELATIONSHIP_KINDS: RelationshipKind[] = [
+  "spouse", "partner", "child", "parent", "sibling", "dependent",
+  "grandparent", "grandchild", "parent-in-law", "sibling-in-law",
+  "step-parent", "step-child", "co-parent",
+  "colleague", "lives-with", "friend", "other",
+];
 
 export function FactsGraph() {
   return (
@@ -65,18 +78,42 @@ export function FactsGraph() {
 }
 
 function FactsGraphInner() {
-  const { storage, documents, readOnly, entities } = useAppContext();
+  const { storage, documents, readOnly, entities, refreshDocuments, refreshEntities } = useAppContext();
   const [vault, setVault] = useState<VaultProfile>({});
+  const [relationships, setRelationships] = useState<RelationshipEdge[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [creatingEntity, setCreatingEntity] = useState(false);
+  const [creatingFact, setCreatingFact] = useState(false);
+  const [creatingRelationship, setCreatingRelationship] = useState(false);
+  const [entityDraft, setEntityDraft] = useState<{ name: string; relationship: Relationship }>({
+    name: "",
+    relationship: "other",
+  });
+  const [factDraft, setFactDraft] = useState<{ entityId: string; key: ProfileKey; value: string }>({
+    entityId: SELF_ENTITY_ID,
+    key: "fullName",
+    value: "",
+  });
+  const [relationshipDraft, setRelationshipDraft] = useState<{ from: string; to: string; kind: RelationshipKind }>({
+    from: SELF_ENTITY_ID,
+    to: "",
+    kind: "spouse",
+  });
   const [viewMode, setViewModeState] = useState<ViewMode>(
     () => (localStorage.getItem(VIEW_KEY) as ViewMode | null) ?? "source"
   );
   const setViewMode = (m: ViewMode) => { setViewModeState(m); localStorage.setItem(VIEW_KEY, m); };
 
   const refresh = useCallback(async () => {
-    setVault(await storage.getAllProfiles());
+    const [profiles, rels] = await Promise.all([
+      storage.getAllProfiles(),
+      storage.listRelationships(),
+    ]);
+    setVault(profiles);
+    setRelationships(rels);
   }, [storage]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, documents.length, entities.length]);
 
   const onSaveFact = useCallback(
     async (entityId: string, key: ProfileKey, next: string) => {
@@ -97,6 +134,115 @@ function FactsGraphInner() {
     [storage, readOnly, refresh]
   );
 
+  const onDeleteRelationship = useCallback(
+    async (id: string) => {
+      if (readOnly) return;
+      await storage.deleteRelationship(id);
+      await refresh();
+    },
+    [storage, readOnly, refresh]
+  );
+
+  const deleteDocumentNode = useCallback(
+    async (documentId: string) => {
+      if (readOnly) return;
+      await storage.deleteDocument(documentId);
+      await storage.deleteCandidatesFromDoc(documentId);
+      await storage.deleteEmbeddingsForDoc(documentId);
+      await storage.deleteRecordsFromDoc(documentId);
+      await refreshDocuments();
+      await refresh();
+    },
+    [storage, readOnly, refreshDocuments, refresh]
+  );
+
+  const deleteSelectedNode = useCallback(
+    async () => {
+      if (!selectedNodeId || readOnly) return;
+      const docId = parseDocNodeId(selectedNodeId);
+      const fact = parseFactNodeId(selectedNodeId);
+      const entityId = parseEntityNodeId(selectedNodeId);
+      if (docId) await deleteDocumentNode(docId);
+      if (fact) await storage.deleteRecord(fact.entityId, fact.key);
+      if (entityId && entityId !== SELF_ENTITY_ID) {
+        await storage.deleteEntity(entityId);
+        await refreshEntities();
+        await refreshDocuments();
+      }
+      setSelectedNodeId(null);
+      await refresh();
+    },
+    [selectedNodeId, readOnly, deleteDocumentNode, storage, refreshEntities, refreshDocuments, refresh]
+  );
+
+  async function createEntityNode() {
+    if (!entityDraft.name.trim() || readOnly) return;
+    const entity: Entity = {
+      id: crypto.randomUUID(),
+      name: entityDraft.name.trim(),
+      relationship: entityDraft.relationship,
+      initials: initialsFor(entityDraft.name),
+      createdAt: Date.now(),
+    };
+    await storage.saveEntity(entity);
+    if (entity.relationship !== "other" && entity.relationship !== "self") {
+      const now = Date.now();
+      await storage.saveRelationship({
+        id: crypto.randomUUID(),
+        fromEntityId: SELF_ENTITY_ID,
+        toEntityId: entity.id,
+        kind: entity.relationship,
+        userPinned: true,
+        bidirectional: isSymmetricRelationship(entity.relationship),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    setEntityDraft({ name: "", relationship: "other" });
+    setCreatingEntity(false);
+    await refreshEntities();
+    await refresh();
+  }
+
+  async function createFactNode() {
+    if (!factDraft.entityId || !factDraft.key || !factDraft.value.trim() || readOnly) return;
+    await addUserCandidate(storage, factDraft.entityId, factDraft.key, factDraft.value, normalizeValue);
+    setFactDraft((draft) => ({ ...draft, value: "" }));
+    setCreatingFact(false);
+    await refresh();
+  }
+
+  async function createRelationshipEdge() {
+    if (!relationshipDraft.from || !relationshipDraft.to || relationshipDraft.from === relationshipDraft.to || readOnly) return;
+    const now = Date.now();
+    await storage.saveRelationship({
+      id: crypto.randomUUID(),
+      fromEntityId: relationshipDraft.from,
+      toEntityId: relationshipDraft.to,
+      kind: relationshipDraft.kind,
+      userPinned: true,
+      bidirectional: isSymmetricRelationship(relationshipDraft.kind),
+      createdAt: now,
+      updatedAt: now,
+    });
+    setRelationshipDraft({ from: SELF_ENTITY_ID, to: "", kind: "spouse" });
+    setCreatingRelationship(false);
+    setViewMode("entity");
+    await refresh();
+  }
+
+  const onConnect = useCallback(
+    async (connection: Connection) => {
+      if (readOnly || viewMode !== "source" || !connection.source || !connection.target) return;
+      const docId = parseDocNodeId(connection.source);
+      const fact = parseFactNodeId(connection.target);
+      if (!docId || !fact) return;
+      await addDocumentSourceToField(storage, fact.entityId, fact.key, docId);
+      await refresh();
+    },
+    [storage, readOnly, viewMode, refresh]
+  );
+
   const derived = useMemo(
     () => deriveFacts({ entities, vault }),
     [entities, vault]
@@ -104,9 +250,9 @@ function FactsGraphInner() {
 
   const { initialNodes, initialEdges } = useMemo(
     () => viewMode === "entity"
-      ? buildGraphByEntity(entities, vault, onSaveFact, derivedRelationshipEdges(derived))
+      ? buildGraphByEntity(entities, vault, onSaveFact, relationships, onDeleteRelationship, derivedRelationshipEdges(derived))
       : buildGraph(documents, entities, vault, onSaveFact, onDeleteCandidate),
-    [viewMode, documents, entities, vault, onSaveFact, onDeleteCandidate, derived]
+    [viewMode, documents, entities, vault, onSaveFact, onDeleteCandidate, relationships, onDeleteRelationship, derived]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -124,12 +270,16 @@ function FactsGraphInner() {
   }, [initialNodes, initialEdges, setNodes, setEdges, reactFlow]);
 
   const onNodeClick = useCallback((_e: unknown, node: Node) => {
+    setSelectedNodeId(node.id);
     setNodes((ns) =>
       ns.map((n) => ({ ...n, data: { ...n.data, focused: relevantTo(node.id, n.id, edges) } }))
     );
   }, [edges, setNodes]);
 
-  if (documents.length === 0 || Object.values(vault).every((p) => !p || Object.keys(p).length === 0)) {
+  const selectedNodeLabel = selectedNodeId ? labelForNodeId(selectedNodeId, nodes) : "";
+  const canDeleteSelected = !!selectedNodeId && !readOnly && parseEntityNodeId(selectedNodeId) !== SELF_ENTITY_ID;
+
+  if (entities.length === 0) {
     return (
       <div className="p-6 text-center">
         <div className="text-sm font-medium">Nothing to graph yet</div>
@@ -174,12 +324,192 @@ function FactsGraphInner() {
         </button>
       </div>
 
+      {!readOnly && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border bg-card p-0.5 shadow-sm">
+          <button
+            onClick={() => { setCreatingEntity((v) => !v); setCreatingFact(false); setCreatingRelationship(false); }}
+            title="Create entity node"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+              creatingEntity ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+            )}
+          >
+            <UserPlus className="h-3 w-3" /> Entity
+          </button>
+          <button
+            onClick={() => {
+              setCreatingFact((v) => !v);
+              setCreatingEntity(false);
+              setCreatingRelationship(false);
+              setFactDraft((draft) => ({ ...draft, entityId: draft.entityId || entities[0]?.id || SELF_ENTITY_ID }));
+            }}
+            title="Create fact node"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+              creatingFact ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+            )}
+          >
+            <Plus className="h-3 w-3" /> Fact
+          </button>
+          <button
+            onClick={() => {
+              setCreatingRelationship((v) => !v);
+              setCreatingEntity(false);
+              setCreatingFact(false);
+              setRelationshipDraft((draft) => ({
+                ...draft,
+                from: draft.from || SELF_ENTITY_ID,
+                to: draft.to || entities.find((e) => e.id !== SELF_ENTITY_ID)?.id || "",
+              }));
+            }}
+            title="Create relationship edge"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+              creatingRelationship ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+            )}
+          >
+            <Users className="h-3 w-3" /> Relationship
+          </button>
+          <div className="mx-0.5 h-4 w-px bg-border" />
+          <button
+            onClick={() => void deleteSelectedNode()}
+            disabled={!canDeleteSelected}
+            title={selectedNodeId ? `Delete ${selectedNodeLabel}` : "Select a node to delete"}
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-3 w-3" /> Delete
+          </button>
+        </div>
+      )}
+
+      {creatingEntity && (
+        <Card className="absolute right-3 top-12 z-10 w-[280px] space-y-3 p-3 shadow-sm">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Name</Label>
+            <Input
+              value={entityDraft.name}
+              onChange={(e) => setEntityDraft({ ...entityDraft, name: e.target.value })}
+              placeholder="e.g., Payal Tiwari"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Relationship</Label>
+            <select
+              value={entityDraft.relationship}
+              onChange={(e) => setEntityDraft({ ...entityDraft, relationship: e.target.value as Relationship })}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+            >
+              {RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCreatingEntity(false)}>Cancel</Button>
+            <Button size="sm" onClick={() => void createEntityNode()}>Create</Button>
+          </div>
+        </Card>
+      )}
+
+      {creatingFact && (
+        <Card className="absolute right-3 top-12 z-10 w-[320px] space-y-3 p-3 shadow-sm">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Entity</Label>
+            <select
+              value={factDraft.entityId}
+              onChange={(e) => setFactDraft({ ...factDraft, entityId: e.target.value })}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+            >
+              {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Field</Label>
+            <select
+              value={factDraft.key}
+              onChange={(e) => setFactDraft({ ...factDraft, key: e.target.value as ProfileKey })}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+            >
+              {PROFILE_FIELDS.map((field) => (
+                <option key={field.key} value={field.key}>{field.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Value</Label>
+            <Input
+              value={factDraft.value}
+              onChange={(e) => setFactDraft({ ...factDraft, value: e.target.value })}
+              placeholder="Enter fact value"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCreatingFact(false)}>Cancel</Button>
+            <Button size="sm" onClick={() => void createFactNode()}>Create</Button>
+          </div>
+        </Card>
+      )}
+
+      {creatingRelationship && (
+        <Card className="absolute right-3 top-12 z-10 w-[340px] space-y-3 p-3 shadow-sm">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">From</Label>
+              <select
+                value={relationshipDraft.from}
+                onChange={(e) => setRelationshipDraft({ ...relationshipDraft, from: e.target.value })}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="">Pick</option>
+                {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <span className="pb-2 text-xs text-muted-foreground">to</span>
+            <div className="space-y-1.5">
+              <Label className="text-xs">To</Label>
+              <select
+                value={relationshipDraft.to}
+                onChange={(e) => setRelationshipDraft({ ...relationshipDraft, to: e.target.value })}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="">Pick</option>
+                {entities
+                  .filter((e) => e.id !== relationshipDraft.from)
+                  .map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Relationship</Label>
+            <select
+              value={relationshipDraft.kind}
+              onChange={(e) => setRelationshipDraft({ ...relationshipDraft, kind: e.target.value as RelationshipKind })}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+            >
+              {RELATIONSHIP_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCreatingRelationship(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              onClick={() => void createRelationshipEdge()}
+              disabled={!relationshipDraft.from || !relationshipDraft.to || relationshipDraft.from === relationshipDraft.to}
+            >
+              Create
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={(connection) => { void onConnect(connection); }}
         onNodeClick={onNodeClick}
+        onPaneClick={() => setSelectedNodeId(null)}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         fitView
@@ -197,6 +527,31 @@ function FactsGraphInner() {
       </ReactFlow>
     </div>
   );
+}
+
+function parseDocNodeId(id: string): string | null {
+  return id.startsWith("doc:") ? id.slice("doc:".length) : null;
+}
+
+function parseFactNodeId(id: string): { entityId: string; key: ProfileKey } | null {
+  if (!id.startsWith("fact:")) return null;
+  const rest = id.slice("fact:".length);
+  const sep = rest.lastIndexOf(":");
+  if (sep < 1) return null;
+  return { entityId: rest.slice(0, sep), key: rest.slice(sep + 1) as ProfileKey };
+}
+
+function parseEntityNodeId(id: string): string | null {
+  return id.startsWith("entity:") ? id.slice("entity:".length) : null;
+}
+
+function labelForNodeId(id: string, nodes: Node[]): string {
+  const node = nodes.find((n) => n.id === id);
+  if (!node) return "selected node";
+  if (node.type === "document") return (node.data as DocNodeData).doc.name;
+  if (node.type === "fact") return (node.data as FactNodeData).label;
+  if (node.type === "entity") return (node.data as EntityNodeData).entity.name;
+  return "selected node";
 }
 
 function buildGraph(
@@ -262,7 +617,7 @@ function buildGraph(
         type: "deletable",
         source: `doc:${c.source.documentId}`,
         target: `fact:${entityId}:${r.key}`,
-        data: { onDelete: () => onDeleteCandidate(entityId, r.key, c.id) },
+        data: { kind: "source", onDelete: () => onDeleteCandidate(entityId, r.key, c.id) },
         style: {
           stroke: "hsl(var(--foreground))",
           strokeOpacity: isCanonical ? 0.75 : isConflict ? 0.35 : 0.5,
@@ -285,6 +640,8 @@ function buildGraphByEntity(
   entities: Entity[],
   vault: VaultProfile,
   onSaveFact: (entityId: string, key: ProfileKey, next: string) => Promise<void>,
+  relationships: RelationshipEdge[],
+  onDeleteRelationship: (id: string) => Promise<void>,
   derivedEdges: import("@octovault/core").DerivedFact[] = [],
 ): { initialNodes: Node[]; initialEdges: Edge[] } {
   const COL_WIDTH = 320;
@@ -296,8 +653,8 @@ function buildGraphByEntity(
 
   // Keep self first, then the rest in created order.
   const ordered = [...entities].sort((a, b) => {
-    if (a.id === "self") return -1;
-    if (b.id === "self") return 1;
+    if (a.id === SELF_ENTITY_ID) return -1;
+    if (b.id === SELF_ENTITY_ID) return 1;
     return a.createdAt - b.createdAt;
   });
 
@@ -387,30 +744,27 @@ function buildGraphByEntity(
     });
   }
 
-  // Family relationship edges between entities.
-  for (const e of entities) {
-    const target = entityById.get(e.id);
-    if (!target) continue;
-    const isRelative = e.relationship !== "self" && e.relationship !== "other";
-    const selfEntity = entityById.get("self");
-    if (!isRelative || !selfEntity || e.id === "self") continue;
-    // Draw spouse / partner / child / parent etc. as labelled edges
-    // from self to the relative.
+  // Stored relationship edges between entities. These are user/document
+  // asserted graph edges, so they can be deleted when they are wrong.
+  for (const rel of relationships) {
+    if (!entityById.has(rel.fromEntityId) || !entityById.has(rel.toEntityId)) continue;
     edges.push({
-      id: `e-fam:${e.id}`,
-      source: `entity:self`,
-      target: `entity:${e.id}`,
-      type: "smoothstep",
-      label: e.relationship,
+      id: `e-rel:${rel.id}`,
+      source: `entity:${rel.fromEntityId}`,
+      target: `entity:${rel.toEntityId}`,
+      type: "deletable",
+      label: rel.kind,
       labelStyle: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
       labelBgStyle: { fill: "hsl(var(--card))" },
       labelBgPadding: [4, 2],
+      data: { kind: "relationship", onDelete: () => onDeleteRelationship(rel.id) },
       style: {
         stroke: "hsl(var(--foreground))",
         strokeOpacity: 0.6,
         strokeWidth: 1.5,
         strokeDasharray: "2 3",
       },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--foreground))", width: 12, height: 12 },
     });
   }
 
@@ -565,24 +919,44 @@ function FactNode({ data }: NodeProps) {
 }
 
 function DeletableEdge(props: EdgeProps) {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data } = props;
+  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data, label } = props;
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
   });
   const d = data as EdgeData | undefined;
+  const text = typeof label === "string" ? label : "";
+  const isRelationship = d?.kind === "relationship";
 
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
       <EdgeLabelRenderer>
-        <button
-          onClick={(e) => { e.stopPropagation(); if (d?.onDelete) void d.onDelete(); }}
+        <div
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-          className="nodrag nopan pointer-events-auto absolute flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-foreground opacity-0 transition-opacity hover:bg-accent hover:opacity-100 [.react-flow__edge:hover_&]:opacity-100"
-          title="Remove this source"
+          className={cn(
+            "nodrag nopan pointer-events-auto absolute flex items-center text-foreground",
+            isRelationship
+              ? "gap-1.5 rounded-full border border-border bg-card px-2 py-1 text-[10px] font-medium shadow-sm"
+              : text
+              ? "gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] shadow-sm"
+              : "h-5 w-5 justify-center"
+          )}
         >
-          <X className="h-3 w-3" />
-        </button>
+          {text && <span className="max-w-[90px] truncate">{text}</span>}
+          {d?.onDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); if (d.onDelete) void d.onDelete(); }}
+              className={cn(
+                "flex items-center justify-center rounded-full hover:bg-accent",
+                isRelationship ? "h-5 w-5 border border-border bg-background" : "h-4 w-4",
+                !text && "opacity-0 transition-opacity hover:opacity-100 [.react-flow__edge:hover_&]:opacity-100"
+              )}
+              title={text ? "Delete relationship edge" : "Remove this source"}
+            >
+              {isRelationship ? <Trash2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
+            </button>
+          )}
+        </div>
       </EdgeLabelRenderer>
     </>
   );

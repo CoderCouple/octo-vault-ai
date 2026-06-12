@@ -2,10 +2,10 @@
 // a document-type classification. One Ollama call returns the docType,
 // the entity hint (whose document this is), and the field values.
 
-import { generateJson, type OllamaConfig } from "./ollama";
+import { generateJson, type GenerateOptions, type OllamaConfig } from "./ollama";
 import { normalizeValue } from "./resolver";
 import { sanitizeCandidates, sanitizeEntityName, type SanitizationReport } from "./sanitize";
-import { reviewExtraction } from "./review";
+import { reviewExtraction, type GenerateJsonTransport, type ReviewResult } from "./review";
 import {
   PROFILE_FIELDS,
   type DocType,
@@ -22,6 +22,13 @@ whose document it is, and extracts identity fields from it. Return JSON only —
 Use only what the document explicitly contains. Do not invent values. For confidence: "high"
 if explicit and unambiguous, "medium" if implied or abbreviated, "low" if uncertain. Omit
 fields you cannot support.`;
+
+const REVIEW_BUDGET_MS = 8_000;
+type ProfileFieldDef = typeof PROFILE_FIELDS[number];
+
+export interface ExtractOptions {
+  generateJson?: GenerateJsonTransport;
+}
 
 export const DOC_TYPES: DocType[] = [
   "passport", "drivers_license", "national_id", "ssn_card",
@@ -145,10 +152,179 @@ const DOC_TYPE_HINTS: Partial<Record<DocType, string>> = {
   voe_letter: `This is a Verification of Employment letter. Capture: fullName (the employee), employerName, jobTitle, employmentStartDate, employmentEndDate (if shown), annualSalary.`,
 };
 
+const COMMON_PERSON_FIELDS: ProfileKey[] = [
+  "fullName", "firstName", "middleName", "lastName",
+  "dateOfBirth", "placeOfBirth", "gender", "nationality",
+];
+
+const ADDRESS_FIELDS: ProfileKey[] = ["addressLine1", "addressLine2", "city", "state", "postalCode", "country"];
+const CONTACT_FIELDS: ProfileKey[] = ["email", "phone"];
+const PASSPORT_FIELDS: ProfileKey[] = ["passportNumber", "passportIssuer", "passportIssueDate", "passportExpiryDate"];
+const IMMIGRATION_FIELDS: ProfileKey[] = [
+  "visaType", "visaReceiptNumber", "visaValidFrom", "visaValidUntil",
+  "visaPetitioner", "visaBeneficiary", "i94Number", "i94ExpiryDate",
+  "greenCardNumber", "greenCardCategory", "naturalizationDate",
+];
+const EMPLOYMENT_FIELDS: ProfileKey[] = ["employerName", "jobTitle", "employmentStartDate", "employmentEndDate", "annualSalary"];
+const CIVIL_STATUS_FIELDS: ProfileKey[] = [
+  "spouseName", "spouseDateOfBirth", "marriageDate", "marriagePlace",
+  "marriageCertificateNumber", "fatherName", "motherName",
+];
+
+const DOC_TYPE_FIELDS: Partial<Record<DocType, ProfileKey[]>> = {
+  passport: [...COMMON_PERSON_FIELDS, ...PASSPORT_FIELDS],
+  drivers_license: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS, "driversLicenseNumber"],
+  national_id: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS, "nationalIdNumber"],
+  ssn_card: ["fullName", "ssn"],
+  marriage_certificate: [...COMMON_PERSON_FIELDS, ...CIVIL_STATUS_FIELDS],
+  marriage_license: [...COMMON_PERSON_FIELDS, ...CIVIL_STATUS_FIELDS],
+  divorce_decree: [...COMMON_PERSON_FIELDS, "spouseName"],
+  birth_certificate: [...COMMON_PERSON_FIELDS, "fatherName", "motherName"],
+  adoption_record: [...COMMON_PERSON_FIELDS, "fatherName", "motherName"],
+  death_certificate: COMMON_PERSON_FIELDS,
+  court_order: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  i797_approval_notice: ["fullName", ...IMMIGRATION_FIELDS, ...EMPLOYMENT_FIELDS],
+  visa_stamp: [...COMMON_PERSON_FIELDS, ...PASSPORT_FIELDS, "visaType", "visaValidFrom", "visaValidUntil", "visaPetitioner"],
+  green_card: [...COMMON_PERSON_FIELDS, "greenCardNumber", "greenCardCategory"],
+  naturalization_certificate: [...COMMON_PERSON_FIELDS, "naturalizationDate"],
+  i94_record: [...COMMON_PERSON_FIELDS, "visaType", "i94Number", "i94ExpiryDate"],
+  ead_card: [...COMMON_PERSON_FIELDS, "visaValidFrom", "visaValidUntil"],
+  tax_form: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS, "taxIdNumber", "ssn", ...EMPLOYMENT_FIELDS],
+  paystub: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS, ...EMPLOYMENT_FIELDS],
+  voe_letter: ["fullName", ...CONTACT_FIELDS, ...EMPLOYMENT_FIELDS],
+  bank_statement: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  utility_bill: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  lease: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  insurance_card: [...COMMON_PERSON_FIELDS],
+  vehicle_registration: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  school_letter: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS],
+  employment_letter: [...COMMON_PERSON_FIELDS, ...ADDRESS_FIELDS, ...CONTACT_FIELDS, ...EMPLOYMENT_FIELDS],
+  medical_record: [...COMMON_PERSON_FIELDS, ...CONTACT_FIELDS],
+};
+
+function uniqueProfileKeys(keys: ProfileKey[]): ProfileKey[] {
+  return Array.from(new Set(keys));
+}
+
+function fieldsForLikelyDocType(docType: DocType | null): ProfileFieldDef[] {
+  const keys = docType ? DOC_TYPE_FIELDS[docType] : undefined;
+  if (!keys) return [...PROFILE_FIELDS];
+  const wanted = new Set(uniqueProfileKeys(keys));
+  return PROFILE_FIELDS.filter((f) => wanted.has(f.key));
+}
+
+function isAppointmentConfirmation(text: string): boolean {
+  return /Appointment Confirmation|Appointment Scheduler/i.test(text) && /\bIRCC number\b|\bNuméro IRCC\b/i.test(text);
+}
+
+function lineValue(text: string, label: string): string | undefined {
+  const re = new RegExp(`^\\s*${label}\\s*:\\s*(.+?)\\s*$`, "im");
+  return text.match(re)?.[1]?.trim();
+}
+
+function pushCandidate(
+  candidates: Omit<FieldCandidate, "entityId">[],
+  args: {
+    documentId: string;
+    docType: DocType;
+    now: number;
+    fieldKey: ProfileKey;
+    value?: string;
+    excerpt?: string;
+    confidence?: "high" | "medium" | "low";
+  },
+) {
+  const value = args.value?.trim();
+  if (!value) return;
+  const duplicate = candidates.some((c) =>
+    c.fieldKey === args.fieldKey && normalizeValue(args.fieldKey, c.value) === normalizeValue(args.fieldKey, value),
+  );
+  if (duplicate) return;
+  candidates.push({
+    id: crypto.randomUUID(),
+    fieldKey: args.fieldKey,
+    value,
+    normalizedValue: normalizeValue(args.fieldKey, value),
+    confidence: args.confidence ?? "high",
+    source: { documentId: args.documentId, excerpt: args.excerpt ?? value },
+    docType: args.docType,
+    extractedAt: args.now,
+    userEdited: false,
+  });
+}
+
+function pushExtra(
+  extras: Omit<ExtraFact, "id" | "extractedAt">[],
+  label: string,
+  value: string | undefined,
+  documentId: string,
+  excerpt?: string,
+) {
+  const clean = value?.trim();
+  if (!clean) return;
+  const duplicate = extras.some((e) => e.label.toLowerCase() === label.toLowerCase() && e.value === clean);
+  if (duplicate) return;
+  extras.push({
+    label,
+    value: clean,
+    confidence: "high",
+    source: { documentId, excerpt: excerpt ?? clean },
+  });
+}
+
+function addDeterministicCandidates(
+  text: string,
+  documentId: string,
+  docType: DocType,
+  now: number,
+  candidates: Omit<FieldCandidate, "entityId">[],
+): Omit<ExtraFact, "id" | "extractedAt">[] {
+  const extras: Omit<ExtraFact, "id" | "extractedAt">[] = [];
+
+  const employment = text.match(/\bemployment of\s+(.+?)\s+with\s+(.+?)\s+with the following details\b/i);
+  if (employment || docType === "employment_letter" || docType === "voe_letter") {
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "fullName", value: employment?.[1], excerpt: employment?.[0] });
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "employerName", value: employment?.[2], excerpt: employment?.[0] });
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "jobTitle", value: lineValue(text, "Job Title") });
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "annualSalary", value: lineValue(text, "Annual Salary") });
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "employmentStartDate", value: lineValue(text, "Employment Start Date") });
+    pushCandidate(candidates, { documentId, docType, now, fieldKey: "dateOfBirth", value: lineValue(text, "Date of Birth") });
+    const homeAddress = text.match(/Home Address\s*:\s*([\s\S]+?)(?:\n\s*Work Address|\n\s*Date of Birth|\n\s*The information|\n\s*Should you require)/i)?.[1]
+      ?.split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (homeAddress?.length) {
+      pushCandidate(candidates, { documentId, docType, now, fieldKey: "addressLine1", value: homeAddress[0], excerpt: `Home Address: ${homeAddress.join(" ")}` });
+      const tail = homeAddress.slice(1).join(" ");
+      const cityStateZipCountry = tail.match(/^(.+?),\s*([A-Za-z ]+),\s*(\d{5}(?:-\d{4})?),\s*(.+)$/);
+      if (cityStateZipCountry) {
+        pushCandidate(candidates, { documentId, docType, now, fieldKey: "city", value: cityStateZipCountry[1], excerpt: tail });
+        pushCandidate(candidates, { documentId, docType, now, fieldKey: "state", value: cityStateZipCountry[2], excerpt: tail });
+        pushCandidate(candidates, { documentId, docType, now, fieldKey: "postalCode", value: cityStateZipCountry[3], excerpt: tail });
+        pushCandidate(candidates, { documentId, docType, now, fieldKey: "country", value: cityStateZipCountry[4], excerpt: tail });
+      }
+    }
+  }
+
+  if (/Appointment Confirmation|Appointment Scheduler/i.test(text)) {
+    pushExtra(extras, "Appointment date", text.match(/\bDate:\s*([0-9/.-]+)/i)?.[1], documentId);
+    pushExtra(extras, "Appointment time", text.match(/\b(?:Time|Heure):\s*([0-9: ]+[AP]M)/i)?.[1], documentId);
+    pushExtra(extras, "IRCC number", text.match(/\bIRCC number:\s*([0-9]+)/i)?.[1] ?? text.match(/\bNuméro IRCC:\s*([0-9]+)/i)?.[1], documentId);
+    const location = text.match(/(USCIS [^\n]+(?:\n[^\n]+){0,4})/i)?.[1]
+      ?.split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(", ");
+    pushExtra(extras, "Appointment location", location, documentId);
+  }
+
+  return extras;
+}
+
 // JSON Schema passed to Ollama's `format` parameter. Constrains the
 // model to a valid shape — far more reliable than asking nicely in the
 // prompt. Requires Ollama 0.5+.
-export function extractionSchema(): object {
+export function extractionSchema(fields: readonly ProfileFieldDef[] = PROFILE_FIELDS): object {
   const fieldEntry = {
     type: "object",
     properties: {
@@ -159,7 +335,7 @@ export function extractionSchema(): object {
     required: ["value", "confidence"],
   };
   const fieldsProps: Record<string, object> = {};
-  for (const f of PROFILE_FIELDS) fieldsProps[f.key] = fieldEntry;
+  for (const f of fields) fieldsProps[f.key] = fieldEntry;
 
   return {
     type: "object",
@@ -363,21 +539,20 @@ export interface ExtractionResult {
 export async function extractFromText(
   cfg: OllamaConfig,
   documentId: string,
-  text: string
+  text: string,
+  opts: ExtractOptions = {},
 ): Promise<ExtractionResult> {
   const truncated = text.slice(0, 14_000);
+  const likelyDocType = classifyByKeywords(truncated);
+  const extractionFields = fieldsForLikelyDocType(likelyDocType);
 
-  const fieldList = PROFILE_FIELDS
+  const fieldList = extractionFields
     .map((f) => `- ${f.key}: ${f.label} (a.k.a. ${f.aliases.join(", ")})`)
     .join("\n");
 
-  // Compact per-type hint table — the LLM consults this AFTER it picks
-  // its docType to know which specific fields are most important for
-  // that type. Without these, generic extraction misses things like
-  // I-797 validity dates or marriage dates.
-  const hintsBlock = Object.entries(DOC_TYPE_HINTS)
-    .map(([type, hint]) => `### If docType = "${type}":\n${hint}`)
-    .join("\n\n");
+  const hintsBlock = likelyDocType && DOC_TYPE_HINTS[likelyDocType]
+    ? `### If docType = "${likelyDocType}":\n${DOC_TYPE_HINTS[likelyDocType]}`
+    : "";
 
   const prompt = `Document text:
 """
@@ -390,8 +565,7 @@ ${truncated}
    person is identifiable, return null.
 3) Optionally, suggest a relationship hint from: ${RELATIONSHIPS.join(", ")}.
 4) Extract every applicable field below from the document. Use a fieldKey ONLY from
-   the list. If you classified the doc as one of the types in the hints block at the
-   bottom, make sure you capture all the fields named in the matching hint.
+   the list. ${likelyDocType ? `A keyword pre-pass suggests this is likely "${likelyDocType}", so this list is intentionally scoped to that document family.` : "Capture only values directly supported by the text."}
 
 Known fields (use these keys exactly):
 ${fieldList}
@@ -424,9 +598,7 @@ Return JSON of this exact shape:
   ]
 }
 
-Per-type extraction priorities (use the one matching your classification):
-
-${hintsBlock}
+${hintsBlock ? `Per-type extraction priorities:\n\n${hintsBlock}\n\n` : ""}
 
 Rules:
 - For "fields": use a fieldKey only from the known list. Never invent keys here.
@@ -435,9 +607,10 @@ Rules:
 - Prefer omitting a field over guessing.
 - Education/experience/extras arrays are optional — omit if not mentioned.`;
 
-  const raw = await generateJson<ExtractionResponse>(cfg, {
+  const runGenerateJson = opts.generateJson ?? (<T>(options: GenerateOptions) => generateJson<T>(cfg, options));
+  const raw = await runGenerateJson<ExtractionResponse>({
     system: SYSTEM, prompt,
-    format: extractionSchema(),  // Ollama 0.5+ structured outputs
+    format: extractionSchema(extractionFields),  // Ollama 0.5+ structured outputs
   });
   // Trust the LLM classification first. When it picks "unknown" we
   // run a cheap keyword fallback over the raw text — qwen3:8b tends
@@ -446,7 +619,10 @@ Rules:
   // unambiguous. Only override "unknown"; never overrule a confident
   // classification.
   const initialDocType: DocType = DOC_TYPES.includes(raw.docType) ? raw.docType : "unknown";
-  const docType: DocType = initialDocType === "unknown"
+  const appointmentConfirmation = isAppointmentConfirmation(truncated);
+  const docType: DocType = appointmentConfirmation
+    ? "unknown"
+    : initialDocType === "unknown"
     ? (classifyByKeywords(truncated) ?? "unknown")
     : initialDocType;
   const entityName = sanitizeEntityName((raw.entityName ?? "").trim() || null);
@@ -456,7 +632,8 @@ Rules:
   const now = Date.now();
   const candidates: Omit<FieldCandidate, "entityId">[] = [];
 
-  for (const f of PROFILE_FIELDS) {
+  for (const f of extractionFields) {
+    if (appointmentConfirmation && f.key === "visaReceiptNumber") continue;
     const entry = raw.fields?.[f.key];
     if (!entry?.value) continue;
     const value = String(entry.value).trim();
@@ -473,6 +650,8 @@ Rules:
       userEdited: false,
     });
   }
+
+  const deterministicExtras = addDeterministicCandidates(truncated, documentId, docType, now, candidates);
 
   const education: Omit<EducationRecord, "entityId">[] = (raw.education ?? [])
     .filter((e) => e?.institution?.trim())
@@ -514,7 +693,30 @@ Rules:
   let finalEntityName = entityName;
   let reviewSummary: ExtractionResult["review"] | undefined;
   if (kept.length > 0 || entityName) {
-    const reviewed = await reviewExtraction(cfg, truncated, kept, entityName);
+    const reviewFallback: ReviewResult = {
+      kept,
+      rejected: [],
+      corrected: [],
+      entityName,
+      entityNameChanged: false,
+    };
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const reviewPromise = reviewExtraction(cfg, truncated, kept, entityName, {
+      signal: controller.signal,
+      generateJson: opts.generateJson,
+    }).catch((e) => {
+      console.warn("[review] LLM review failed; keeping originals:", e);
+      return reviewFallback;
+    });
+    const timeoutPromise = new Promise<ReviewResult>((resolve) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        resolve(reviewFallback);
+      }, REVIEW_BUDGET_MS);
+    });
+    const reviewed = await Promise.race([reviewPromise, timeoutPromise])
+      .finally(() => { if (timeout) clearTimeout(timeout); });
     finalCandidates = reviewed.kept;
     finalEntityName = reviewed.entityName;
     reviewSummary = {
@@ -529,10 +731,21 @@ Rules:
   // the known fieldKey list. Stored separately, indexed for retrieval,
   // not part of canonical Profile (yet — Phase 4 unifies under Claim).
   const extras: ExtraFact[] = [];
+  for (const e of deterministicExtras) {
+    extras.push({
+      id: crypto.randomUUID(),
+      label: e.label,
+      value: e.value,
+      confidence: e.confidence,
+      source: e.source,
+      extractedAt: now,
+    });
+  }
   for (const e of raw.extras ?? []) {
     const label = String(e.label ?? "").trim();
     const value = String(e.value ?? "").trim();
     if (!label || !value) continue;
+    if (extras.some((ex) => ex.label.toLowerCase() === label.toLowerCase() && ex.value === value)) continue;
     extras.push({
       id: crypto.randomUUID(),
       label,

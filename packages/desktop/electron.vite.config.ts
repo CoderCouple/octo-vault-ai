@@ -21,6 +21,6 @@ export default defineConfig({
     build: {
       rollupOptions: { input: resolve("src/renderer/index.html") },
     },
-    server: { port: 5174, strictPort: true },
+    server: { port: Number(process.env.OCTOVAULT_RENDERER_PORT ?? 5174), strictPort: true },
   },
 });

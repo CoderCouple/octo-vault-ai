@@ -5,15 +5,12 @@
 import type { AppHost, OllamaEnsureRunningResult } from "@octovault/ui";
 import {
   ask as askLocal,
-  classifyByKeywords,
-  DOC_TYPES,
-  extractionSchema,
+  extractFromText as extractFromTextCore,
   hasModel,
-  normalizeValue, parseModelJson, PROFILE_FIELDS,
-  RELATIONSHIPS,
+  parseModelJson,
   VISION_OCR_PROMPT,
-  type EducationRecord, type ExperienceRecord,
-  type ExtractionResult, type FieldCandidate, type DocType, type ProfileKey, type QaEngine, type QaResult, type Relationship,
+  type ExtractedPdf, type PdfExtractOptions,
+  type ExtractionResult, type GenerateOptions, type QaEngine, type QaResult,
   type VisionEngine,
 } from "@octovault/core";
 import { ipcStorageAdapter } from "./storage/ipc-adapter";
@@ -42,6 +39,11 @@ declare global {
         reset: () => Promise<void>;
       };
       store: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      doc: {
+        readBytes: (docId: string) => Promise<{ bytes: Uint8Array; mimeType?: string } | null>;
+        pathFor: (file: File) => string;
+        parsePdfLite: (input: { filePath?: string; bytes?: Uint8Array; ocrEnabled?: boolean }) => Promise<ExtractedPdf>;
+      };
       overlay?: {
         hide: () => void;
         show: () => void;
@@ -70,12 +72,6 @@ async function cfg(): Promise<OllamaCfg> {
   return { url: s.ollamaUrl, llmModel: s.llmModel, embeddingModel: s.embeddingModel, visionModel: s.visionModel };
 }
 
-// DOC_TYPES + RELATIONSHIPS now come from @octovault/core so the
-// renderer enum matches the schema. The duplicate that used to live
-// here was missing every civil-status and immigration type, so
-// marriage certs / birth certs / I-797s could never classify as
-// anything other than "unknown".
-
 export const desktopHost: AppHost = {
   surface: "desktop",
   storage: ipcStorageAdapter,
@@ -93,130 +89,18 @@ export const desktopHost: AppHost = {
 
   async extractFromText(documentId, text): Promise<ExtractionResult> {
     const c = await cfg();
-    const truncated = text.slice(0, 14_000);
-    const fieldList = PROFILE_FIELDS
-      .map((f) => `- ${f.key}: ${f.label} (a.k.a. ${f.aliases.join(", ")})`)
-      .join("\n");
-
-    const SYSTEM = `You are an on-device assistant that classifies a personal document, identifies
-whose document it is, and extracts identity fields. Return JSON only. Use only what the
-document explicitly contains. Do not invent values.`;
-    const prompt = `Document text:
-"""
-${truncated}
-"""
-
-1) Classify into one of: ${DOC_TYPES.join(", ")}.
-2) Identify the person this document is primarily about. Return their full name as it
-   appears in the document, or null if not identifiable.
-3) Optionally suggest a relationship hint from: ${RELATIONSHIPS.join(", ")}.
-4) Extract a subset of these fields supported by evidence:
-${fieldList}
-5) If the document mentions education (degrees, schools, transcripts) or work
-   experience (jobs, employers), extract them as repeating records.
-
-Return JSON:
-{
-  "docType": "<one of the listed types>",
-  "entityName": "<full name> or null",
-  "relationshipHint": "<one of the relationships> (optional)",
-  "fields": {
-    "<fieldKey>": { "value": "<string>", "confidence": "high"|"medium"|"low", "excerpt": "<verbatim snippet>" }
-  },
-  "education": [
-    { "institution": "...", "degree": "Bachelor's|Master's|PhD|...", "field": "...", "startDate": "YYYY-MM or YYYY", "endDate": "YYYY-MM or YYYY", "location": "...", "gpa": "...", "honors": "...", "excerpt": "..." }
-  ],
-  "experience": [
-    { "company": "...", "role": "...", "startDate": "YYYY-MM or YYYY", "endDate": "YYYY-MM or YYYY or empty for current", "location": "...", "description": "...", "excerpt": "..." }
-  ]
-}`;
-
-    const resp = await window.octovault!.ollama.generate(c, {
-      model: c.llmModel,
-      prompt,
-      system: SYSTEM,
-      stream: false,
-      format: extractionSchema(),
-      options: { temperature: 0.1 },
-    });
-
-    const parsed = parseModelJson<{
-      docType: DocType;
-      entityName: string | null;
-      relationshipHint?: Relationship;
-      fields: Record<string, { value: string; confidence: "high" | "medium" | "low"; excerpt?: string }>;
-      education?: Array<{ institution: string; degree?: string; field?: string; startDate?: string; endDate?: string; location?: string; gpa?: string; honors?: string; excerpt?: string }>;
-      experience?: Array<{ company: string; role: string; startDate?: string; endDate?: string; location?: string; description?: string; excerpt?: string }>;
-    }>(resp.response);
-
-    // Trust the LLM classification first; fall back to keyword rules
-    // when it bails to "unknown" (common on scanned / non-US-formatted
-    // civil-status docs like Indian marriage certs).
-    const initialDocType: DocType = DOC_TYPES.includes(parsed.docType) ? parsed.docType : "unknown";
-    const docType: DocType = initialDocType === "unknown"
-      ? (classifyByKeywords(truncated) ?? "unknown")
-      : initialDocType;
-    const entityName = (parsed.entityName ?? "").trim() || null;
-    const relationshipHint = parsed.relationshipHint && RELATIONSHIPS.includes(parsed.relationshipHint)
-      ? parsed.relationshipHint : undefined;
-
-    const now = Date.now();
-    const candidates: Omit<FieldCandidate, "entityId">[] = [];
-    for (const f of PROFILE_FIELDS) {
-      const entry = parsed.fields?.[f.key];
-      if (!entry?.value) continue;
-      const value = String(entry.value).trim();
-      if (!value) continue;
-      candidates.push({
-        id: crypto.randomUUID(),
-        fieldKey: f.key as ProfileKey,
-        value,
-        normalizedValue: normalizeValue(f.key as ProfileKey, value),
-        confidence: entry.confidence ?? "medium",
-        source: { documentId, excerpt: entry.excerpt },
-        docType,
-        extractedAt: now,
-        userEdited: false,
+    const generateJson = async <T,>(opts: GenerateOptions): Promise<T> => {
+      const resp = await window.octovault!.ollama.generate(c, {
+        model: c.llmModel,
+        prompt: opts.prompt,
+        system: opts.system,
+        stream: false,
+        format: opts.format,
+        options: { temperature: opts.temperature ?? 0.1 },
       });
-    }
-    const education: Omit<EducationRecord, "entityId">[] = (parsed.education ?? [])
-      .filter((e) => e?.institution?.trim())
-      .map((e) => ({
-        id: crypto.randomUUID(),
-        institution: e.institution.trim(),
-        degree: e.degree?.trim(),
-        field: e.field?.trim(),
-        startDate: e.startDate?.trim(),
-        endDate: e.endDate?.trim(),
-        location: e.location?.trim(),
-        gpa: e.gpa?.trim(),
-        honors: e.honors?.trim(),
-        source: { documentId, excerpt: e.excerpt },
-        extractedAt: now,
-        userEdited: false,
-      }));
-
-    const experience: Omit<ExperienceRecord, "entityId">[] = (parsed.experience ?? [])
-      .filter((e) => e?.company?.trim() && e?.role?.trim())
-      .map((e) => ({
-        id: crypto.randomUUID(),
-        company: e.company.trim(),
-        role: e.role.trim(),
-        startDate: e.startDate?.trim(),
-        endDate: e.endDate?.trim(),
-        location: e.location?.trim(),
-        description: e.description?.trim(),
-        source: { documentId, excerpt: e.excerpt },
-        extractedAt: now,
-        userEdited: false,
-      }));
-
-    // TODO Phase 4b: collapse this onto core's extractFromText by
-    // making it accept a transport interface (like QaEngine in qa.ts).
-    // Right now extras + inferredRelationships come back empty from
-    // the desktop renderer because this duplicated extractor doesn't
-    // ask the LLM for them.
-    return { docType, entityName, relationshipHint, candidates, extras: [], inferredRelationships: [], inferredEvents: [], education, experience };
+      return parseModelJson<T>(resp.response);
+    };
+    return extractFromTextCore(c, documentId, text, { generateJson });
   },
   async embed(text): Promise<number[]> {
     const c = await cfg();
@@ -250,6 +134,14 @@ Return JSON:
     } catch {
       return null;
     }
+  },
+  async parsePdfText(file: File, _opts?: PdfExtractOptions): Promise<ExtractedPdf> {
+    const filePath = window.octovault?.doc.pathFor(file);
+    if (filePath) {
+      return window.octovault!.doc.parsePdfLite({ filePath, ocrEnabled: true });
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return window.octovault!.doc.parsePdfLite({ bytes, ocrEnabled: true });
   },
   async ask(question, opts): Promise<QaResult> {
     const c = await cfg();

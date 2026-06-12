@@ -4,6 +4,7 @@
 
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, shell } from "electron";
 import http from "node:http";
+import os from "node:os";
 import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -752,6 +753,38 @@ ipcMain.handle("doc.readBytes", async (_e, docId: string) => {
     console.warn("[doc.readBytes] read failed:", err);
     return null;
   }
+});
+
+ipcMain.handle("doc.parsePdfLite", async (_e, input: { filePath?: string; bytes?: Uint8Array; ocrEnabled?: boolean }) => {
+  if (!input.filePath && !input.bytes) throw new Error("LiteParse requires a file path or bytes");
+  const { LiteParse } = await import("@llamaindex/liteparse");
+  const source = input.filePath ?? Buffer.from(input.bytes!);
+  const numWorkers = Math.max(1, Math.min(4, Math.floor(os.cpus().length / 2) || 1));
+  const parse = async (ocrEnabled: boolean) => {
+    const parser = new LiteParse({
+      ocrEnabled,
+      ocrLanguage: "eng",
+      outputFormat: "json",
+      quiet: true,
+      numWorkers,
+    });
+    return parser.parse(source);
+  };
+  const toResponse = (result: Awaited<ReturnType<typeof parse>>, ocrUsed: boolean) => {
+    const pageTexts = result.pages.map((p) => p.text.trim());
+    const text = (pageTexts.join("\n\n").trim() || result.text.trim());
+    return {
+      text,
+      pageCount: result.pages.length,
+      pageTexts,
+      ocrUsed,
+    };
+  };
+
+  const textLayer = await parse(false);
+  const lowTextPages = textLayer.pages.filter((p) => p.text.trim().length < 80).length;
+  if (input.ocrEnabled === false || lowTextPages === 0) return toResponse(textLayer, false);
+  return toResponse(await parse(true), true);
 });
 
 ipcMain.handle("ollama.embed", async (_e, cfg: OllamaCfg, model: string, prompt: string) => {
