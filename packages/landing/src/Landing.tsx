@@ -7,7 +7,7 @@
 //   2. facts populate in the panel + conflict surfaces
 //   3. click ⬛ Fill — web-form fields populate from the graph
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle, ArrowRight, AtSign, Check, Download, FileText, Github, Loader2, Lock,
   Network, PanelRight, Pin, RotateCcw, ScanLine,
@@ -74,11 +74,15 @@ function Nav() {
             </a>
           ))}
         </nav>
-        <a href="#waitlist"
-          data-attr="cta-nav-waitlist"
-          className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3.5 py-1.5 text-[13px] font-semibold text-background hover:bg-foreground/90">
-          Join waitlist <ArrowRight className="h-3.5 w-3.5" />
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="#waitlist"
+            data-attr="cta-nav-waitlist"
+            className="hidden h-9 items-center gap-1.5 rounded-md bg-foreground px-4 text-[13px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90 sm:inline-flex"
+          >
+            Join waitlist <ArrowRight className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
     </header>
   );
@@ -88,48 +92,26 @@ function Nav() {
 // Hero — big confident type + animated browser/side-panel mock
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Detects Apple Silicon vs Intel via the WebGL renderer string. Safari's
-// fingerprinting defences blank this out, in which case we default to
-// arm64 (the majority of new Macs since 2020).
-function detectMacArch(): "arm64" | "x64" {
-  if (typeof window === "undefined" || typeof document === "undefined") return "arm64";
-  try {
-    const canvas = document.createElement("canvas");
-    const gl = (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
-    if (!gl) return "arm64";
-    const ext = gl.getExtension("WEBGL_debug_renderer_info");
-    const renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-    if (typeof renderer === "string") {
-      if (/Apple\s*(M[1-9]|VC|GPU)/i.test(renderer)) return "arm64";
-      if (/(Intel|AMD|NVIDIA|Radeon)/i.test(renderer)) return "x64";
-    }
-  } catch { /* ignored — fall through to default */ }
-  return "arm64";
-}
-
 const MAC_DOWNLOADS = {
   arm64: {
     url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1-arm64.dmg",
     label:  "Apple Silicon",
     size:   "115 MB",
-    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1.dmg",
-    altLabel: "Intel Mac DMG",
   },
   x64: {
     url:    "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1.dmg",
     label:  "Intel Mac",
     size:   "120 MB",
-    altUrl: "https://github.com/CoderCouple/octo-vault-ai/releases/latest/download/OctoVaultAI-0.0.1-arm64.dmg",
-    altLabel: "Apple Silicon DMG",
   },
 } as const;
 
-// Shared download button — used by both the hero and the Pricing
+const CHROME_EXTENSION_URL =
+  "https://chromewebstore.google.com/detail/njnbodmehkepjpanpfmdcbnbdhfgpfdc";
+
+// Shared download menu — used by both the hero and the Pricing
 // section's Free tier. Each consumer passes a unique attr so PostHog
-// click events stay distinguishable. Spinner-only handler does NOT
-// preventDefault — the browser's native <a href download> flow is
-// what actually triggers the file save; intercepting with window.open
-// / iframes broke the download in earlier attempts.
+// click events stay distinguishable. The actual file download remains
+// a native <a href download> flow inside the menu.
 function MacDownloadButton({
   attr,
   className = "inline-flex h-11 min-w-[230px] items-center justify-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90",
@@ -137,46 +119,108 @@ function MacDownloadButton({
   attr: string;
   className?: string;
 }) {
-  const [arch, setArch] = useState<"arm64" | "x64">("arm64");
   const [downloading, setDownloading] = useState(false);
-  useEffect(() => { setArch(detectMacArch()); }, []);
-  const dl = MAC_DOWNLOADS[arch];
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const rootClass = className.includes("w-full") ? "group relative block w-full" : "group relative inline-block";
+  const menuClass = className.includes("w-full") ? "left-0 right-0" : "left-0 w-64";
 
-  const handle = () => {
+  useEffect(() => {
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const details = detailsRef.current;
+      if (!details?.open) return;
+      if (event.target instanceof Node && !details.contains(event.target)) {
+        details.removeAttribute("open");
+      }
+    };
+    const closeOnKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") detailsRef.current?.removeAttribute("open");
+    };
+
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    document.addEventListener("keydown", closeOnKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      document.removeEventListener("keydown", closeOnKeyDown);
+    };
+  }, []);
+
+  const handle = (arch: "arm64" | "x64") => {
+    detailsRef.current?.removeAttribute("open");
     setDownloading(true);
     track("download_mac_clicked", { arch, source: attr });
     window.setTimeout(() => setDownloading(false), 5000);
   };
 
   return (
+    <details ref={detailsRef} className={rootClass}>
+      <summary
+        aria-busy={downloading}
+        data-attr={attr}
+        className={`${className} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+      >
+        {downloading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Starting download…
+          </>
+        ) : (
+          <>
+            <Download className="h-4 w-4" /> Download for Mac
+            <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
+            <ArrowRight className="h-4 w-4 rotate-90 opacity-70 transition-transform group-open:-rotate-90" />
+          </>
+        )}
+      </summary>
+      <div className={`absolute z-40 mt-2 overflow-hidden rounded-md border border-border bg-background p-1 text-left text-[12px] text-foreground shadow-[0_18px_48px_-18px_rgba(0,0,0,0.35)] ${menuClass}`}>
+        <a
+          href={MAC_DOWNLOADS.arm64.url}
+          download
+          onClick={() => handle("arm64")}
+          data-attr={`${attr}-arm64`}
+          className="flex items-center justify-between rounded px-3 py-2.5 font-medium transition-colors hover:bg-accent"
+        >
+          <span>Apple Silicon DMG</span>
+          <span className="text-muted-foreground">115 MB</span>
+        </a>
+        <a
+          href={MAC_DOWNLOADS.x64.url}
+          download
+          onClick={() => handle("x64")}
+          data-attr={`${attr}-x64`}
+          className="flex items-center justify-between rounded px-3 py-2.5 font-medium transition-colors hover:bg-accent"
+        >
+          <span>Intel Mac DMG</span>
+          <span className="text-muted-foreground">120 MB</span>
+        </a>
+      </div>
+    </details>
+  );
+}
+
+function ChromeExtensionButton({
+  attr,
+  className = "inline-flex h-11 min-w-[230px] items-center justify-center gap-2 rounded-md bg-foreground px-6 text-[14px] font-semibold text-background shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-foreground/90",
+}: {
+  attr: string;
+  className?: string;
+}) {
+  return (
     <a
-      href={dl.url}
-      download
-      onClick={handle}
-      data-attr={`${attr}-${arch}`}
-      aria-busy={downloading}
+      href={CHROME_EXTENSION_URL}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() => track("chrome_extension_clicked", { source: attr })}
+      data-attr={attr}
       className={className}
     >
-      {downloading ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Starting download…
-        </>
-      ) : (
-        <>
-          <Download className="h-4 w-4" /> Download for Mac
-          <span className="ml-0.5 rounded-sm border border-background/30 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider opacity-80">Beta</span>
-        </>
-      )}
+      <PanelRight className="h-4 w-4" />
+      Add to Chrome
+      <ArrowRight className="h-4 w-4" />
     </a>
   );
 }
 
 function Hero() {
-  const [arch, setArch] = useState<"arm64" | "x64">("arm64");
-  useEffect(() => { setArch(detectMacArch()); }, []);
-  const dl = MAC_DOWNLOADS[arch];
-
   return (
     <section className="relative overflow-hidden bg-background">
       {/* Subtle grid backdrop, masked to fade at the edges. Pure border-color
@@ -185,71 +229,8 @@ function Hero() {
         aria-hidden
         className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] [background-size:56px_56px] opacity-60 [mask-image:radial-gradient(ellipse_70%_55%_at_50%_30%,black_30%,transparent_75%)]"
       />
-      <div className="relative mx-auto max-w-[1200px] px-6 pt-20 pb-10 text-center md:pt-28">
-        <a
-          href="https://github.com/CoderCouple/octo-vault-ai"
-          target="_blank"
-          rel="noreferrer"
-          data-attr="cta-hero-pill-github"
-          className="group mb-7 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1 text-[11.5px] font-medium tracking-wide backdrop-blur transition-colors hover:border-foreground/50"
-        >
-          <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
-          <span>Open source</span>
-          <span className="opacity-40">·</span>
-          <span className="font-mono text-[10.5px]">github.com/CoderCouple/octo-vault-ai</span>
-          <ArrowRight className="h-3 w-3 opacity-50 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
-        </a>
-        <h1 className="mx-auto max-w-[860px] font-serif text-[34px] leading-[1.02] tracking-[-0.02em] md:text-[60px]">
-          Your private AI <span className="italic">paperwork vault</span>.
-          <br />
-          Ask anything. Fill anything. Locally.
-        </h1>
-        <p className="mx-auto mt-7 max-w-[680px] text-[15.5px] leading-relaxed text-muted-foreground md:text-[17.5px]">
-          NotebookLM uploads to Google. ChatGPT uploads to OpenAI. Obsidian
-          doesn't act on your docs. <span className="text-foreground font-medium">OctoVault keeps your paperwork on disk
-          and answers questions or fills forms from it.</span>
-        </p>
-        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <MacDownloadButton attr="cta-hero-download-mac" />
-          <a
-            href="#waitlist"
-            data-attr="cta-hero-waitlist"
-            className="inline-flex h-11 items-center gap-2 rounded-md border border-border bg-card/70 px-6 text-[14px] font-medium backdrop-blur transition-colors hover:bg-accent"
-          >
-            Join the waitlist <ArrowRight className="h-4 w-4" />
-          </a>
-        </div>
-        {/* Arch detection note + alt download link. The primary button
-            tracks the visitor's Mac architecture; the alt link gives the
-            other build for anyone whose detection failed or mismatched. */}
-        <p className="mt-3 text-[11.5px] text-muted-foreground">
-          {dl.label} · {dl.size} ·{" "}
-          <a
-            href={dl.altUrl}
-            download
-            onClick={() => track("download_mac_clicked", { arch: arch === "arm64" ? "x64" : "arm64", source: "alt" })}
-            data-attr={`cta-hero-download-mac-alt-${arch === "arm64" ? "x64" : "arm64"}`}
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            {dl.altLabel}
-          </a>
-        </p>
-        {/* First-launch expectations — sets the user up so the Gatekeeper
-            prompt feels expected, not alarming. macOS Sequoia (15+) removed
-            the right-click → Open path; users now have to allow via System
-            Settings → Privacy & Security → "Open Anyway". */}
-        <p className="mt-2 text-[11px] text-muted-foreground/80">
-          Signed &amp; notarized · Developer ID verified by Apple · macOS 12+
-        </p>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11.5px] text-muted-foreground">
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
-            <span className="size-1.5 rounded-full bg-muted-foreground/40" /> Windows · coming soon
-          </span>
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2.5">
-            <span className="size-1.5 rounded-full bg-muted-foreground/40" /> Linux · coming soon
-          </span>
-        </div>
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[11.5px] text-muted-foreground">
+      <div className="relative mx-auto max-w-[1200px] px-6 pt-16 pb-10 text-center md:pt-24">
+        <div className="mb-7 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-border bg-card/80 px-3 py-1 text-[11.5px] font-medium tracking-wide backdrop-blur">
           <span className="inline-flex items-center gap-1.5">
             <Lock className="h-3 w-3" /> 100% on-device
           </span>
@@ -266,6 +247,27 @@ function Hero() {
             <PanelRight className="h-3 w-3" /> Chrome side panel
           </span>
         </div>
+        <h1 className="mx-auto max-w-[860px] font-serif text-[34px] leading-[1.02] tracking-[-0.02em] md:text-[60px]">
+          Your documents.
+          <br />
+          Your knowledge graph.
+        </h1>
+        <p className="mx-auto mt-7 max-w-[680px] text-[15.5px] leading-relaxed text-muted-foreground md:text-[17.5px]">
+          OctoVault turns your local documents into a private knowledge graph,
+          so you can ask questions, trace facts to their source, and keep every
+          byte on your device.
+        </p>
+        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <MacDownloadButton attr="cta-hero-download-mac" />
+          <ChromeExtensionButton attr="cta-hero-chrome-extension" />
+        </div>
+        {/* First-launch expectations — sets the user up so the Gatekeeper
+            prompt feels expected, not alarming. macOS Sequoia (15+) removed
+            the right-click → Open path; users now have to allow via System
+            Settings → Privacy & Security → "Open Anyway". */}
+        <p className="mt-2 text-[11px] text-muted-foreground/80">
+          Signed &amp; notarized · Developer ID verified by Apple · macOS 12+
+        </p>
       </div>
       <div className="relative mx-auto max-w-[1200px] px-6 pb-24 md:pb-32">
         <HeroDemo />
@@ -286,7 +288,7 @@ const HERO_PHASES = [
   { label: "Extract facts",          detail: "Facts populate with source counts and conflict markers" },
   { label: "Build knowledge graph",  detail: "Every fact carries its source — documents link to the facts they prove" },
   { label: "Ask anything",           detail: "Chat with your vault — answers cite the source documents" },
-  { label: "Fill the form",          detail: "Coming soon — Chrome side panel will match every field from the graph", comingSoon: true },
+  { label: "Fill the form",          detail: "Chrome side panel matches every field from the graph" },
 ];
 
 function HeroDemo() {
@@ -353,13 +355,6 @@ function HeroDemo() {
                 {i + 1}
               </span>
               {p.label}
-              {p.comingSoon && (
-                <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wider ${
-                  isActive ? "bg-background/15 text-background" : "bg-foreground/5 text-muted-foreground"
-                }`}>
-                  Soon
-                </span>
-              )}
             </button>
           );
         })}
@@ -1015,7 +1010,7 @@ const STEPS = [
     body: "Every extracted fact is a node, linked to the document that produced it. Conflicts (differing addresses, red-flag DOBs) get flagged before anything else can use them.",
     Visual: StepGraphVisual },
   { n: "03", title: "Chat with your vault",
-    body: "Ask anything (\"when does Diego's passport expire?\") and get cited answers from your own documents. The Chrome side panel that auto-fills web forms is coming soon — join the waitlist.",
+    body: "Ask anything (\"when does Diego's passport expire?\") and get cited answers from your own documents. Then use the Chrome extension to auto-fill web forms from the same graph.",
     Visual: StepFillVisual },
 ];
 
@@ -1970,42 +1965,41 @@ function ChromeExtensionSection() {
         <SectionEyebrow>Feature 04 · Chrome extension</SectionEyebrow>
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
-          Coming soon · join the waitlist
+          Live on Chrome Web Store
         </div>
         <SectionTitle>
           Fill a real visa application. <span className="italic">In three seconds.</span>
         </SectionTitle>
         <p className="mt-4 max-w-[720px] text-[15px] leading-relaxed text-muted-foreground">
-          The OctoVault AI side panel will dock beside any web page — visa
+          The OctoVault AI side panel docks beside any web page — visa
           applications, tax intake forms, school enrollments, USCIS forms.
           Click <span className="font-mono">⬛ Fill this page</span> and every field
           gets matched from your knowledge graph. The interactive demo
-          below shows what the experience will feel like on the US
-          Department of State's DS-160 visa form once the extension ships.
+          below shows the experience on the US Department of State's
+          DS-160 visa form.
         </p>
+        <div className="mt-6">
+          <ChromeExtensionButton attr="cta-extension-section-chrome" />
+        </div>
         {/* Interactive demo */}
         <div className="mt-10">
           <DS160FormDemo />
         </div>
-        {/* Coming-soon trio: waitlist CTA · what we're polishing ·
-            how the matcher will work. Install instructions are
-            removed until launch so we don't tell users to load an
-            unpacked dev build they'll have a bad time with. */}
+        {/* Live extension details: store CTA, supported field patterns,
+            and the matcher stack behind the side panel. */}
         <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-3">
-          <ExtensionBlock title="Get early access" icon={PanelRight}>
+          <ExtensionBlock title="Install from the store" icon={PanelRight}>
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-              The Chrome extension is in private beta. Drop your email
-              on the waitlist below and we'll ping you the moment the
-              Chrome Web Store listing goes live.
+              Add OctoVault AI from the Chrome Web Store, open the side
+              panel on a form, and fill fields from your private document
+              graph.
             </p>
-            <a
-              href="#waitlist"
-              className="mt-3 inline-flex h-8 items-center justify-center rounded-md bg-foreground px-4 text-[12px] font-semibold text-background"
-            >
-              Join the waitlist
-            </a>
+            <ChromeExtensionButton
+              attr="cta-extension-card-chrome"
+              className="mt-3 inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-foreground px-4 text-[12px] font-semibold text-background transition-colors hover:bg-foreground/90"
+            />
           </ExtensionBlock>
-          <ExtensionBlock title="What we're polishing" icon={Check}>
+          <ExtensionBlock title="What it handles" icon={Check}>
             <ul className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
               <li>Detection across React-Aria, Material, Headless UI, Radix radios + selects</li>
               <li>Composite fields (Y/M/D dates, multi-part phones, address blocks)</li>
@@ -2013,7 +2007,7 @@ function ChromeExtensionSection() {
               <li>Multi-page session memory so intent + entity routing survive Next clicks</li>
             </ul>
           </ExtensionBlock>
-          <ExtensionBlock title="How the matcher will work" icon={Sparkles}>
+          <ExtensionBlock title="How the matcher works" icon={Sparkles}>
             <ol className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
               <li><span className="font-mono text-[11px] text-foreground">1.</span> HTML <span className="font-mono">autocomplete</span> attributes — instant</li>
               <li><span className="font-mono text-[11px] text-foreground">2.</span> Label / name / placeholder keyword match against the schema</li>
@@ -2648,7 +2642,7 @@ function FloatingShortcutWidget() {
 // Comparison table — adds multi-entity, citations, side panel rows
 // ──────────────────────────────────────────────────────────────────────────────
 
-type Cell = boolean | "partial" | "soon";
+type Cell = boolean | "partial";
 // Columns: OctoVault · NotebookLM · ChatGPT (with file upload) ·
 // Obsidian-AI plugins · Filliny (form-fill extension). Honest reads —
 // don't snark; let the threat-model + capability mix tell the story.
@@ -2656,7 +2650,7 @@ const COMPARISON_ROWS: ReadonlyArray<readonly [string, Cell, Cell, Cell, Cell, C
   ["Documents stay on your machine",       true,  false,    false,   true,     true],
   ["Reads your personal documents",        true,  true,     true,    "partial",false],
   ["Answers questions with citations",     true,  true,     true,    "partial",false],
-  ["Fills web forms from your docs",       "soon",false,    false,   false,    true],
+  ["Fills web forms from your docs",       true,  false,    false,   false,    true],
   ["Knowledge-graph view (sources)",       true,  false,    false,   false,    false],
   ["Multi-entity (you + family)",          true,  false,    false,   false,    "partial"],
   ["Conflict detection",                   true,  false,    false,   false,    false],
@@ -2711,7 +2705,6 @@ function CompCell({ v }: { v: Cell }) {
     <td className="p-4">
       {v === true ? <Check className="h-4 w-4" />
        : v === false ? <span className="text-muted-foreground">—</span>
-       : v === "soon" ? <span className="inline-block rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Soon</span>
        : <span className="text-[11px] uppercase tracking-wider text-muted-foreground">partial</span>}
     </td>
   );
@@ -2746,7 +2739,7 @@ const PRICING_TIERS: PricingTier[] = [
     features: [
       "Up to 200 documents in your vault",
       "50 chat questions per day",
-      "15 form-fills per month (when extension ships)",
+      "15 Chrome extension form-fills per month",
       "All local models (qwen3:8b, nomic-embed-text)",
       "Full knowledge-graph view + conflict resolution",
       "Encrypted local vault (SQLCipher)",
@@ -2765,7 +2758,7 @@ const PRICING_TIERS: PricingTier[] = [
       "Unlimited documents, questions, and form-fills",
       "Multi-vault support (you + business + family)",
       "Premium local models (Qwen3-VL, larger context)",
-      "Early access to side panel + vision OCR",
+      "Higher form-fill limits + vision OCR",
       "Priority bug-fix queue · everything in Free",
     ],
     cta: "Reserve the $9 price",
@@ -3125,4 +3118,3 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     </h2>
   );
 }
-
