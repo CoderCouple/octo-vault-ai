@@ -55,15 +55,30 @@ posting order, ready to ctrl-V on launch day.
 
 ---
 
-## Phase 1 — Soft launch (Tue Jun 23 → Mon Jun 29)
+## Pre-launch prerequisites (do before Tue Jun 30)
 
-**Goal: catch the embarrassing bug before strangers do.**
+Soft launch is skipped — going straight from "ready" to Show HN. These
+items still must land before launch day:
 
-- **Tue Jun 23** — DM 10 people personally. Half privacy-leaning devs, half immigration-context users. Goal: 5 actually install. Watch PostHog sessions, fix top friction
-- **Wed Jun 25** — Post in 2 Slack/Discord communities the user already belongs to. "Beta for $1 in feedback, here's the DMG." NO public channels
-- **Thu Jun 25** — **Notarize the DMG from the non-MDM Mac.** Block out the morning. (MDM/Jamf on the dev Mac will intercept Apple's stapler — must be done from a non-managed machine.)
-- **Fri Jun 27** — Final QA on a clean Mac (Task #12). DMG opens without Gatekeeper drama. Ollama install flow works end-to-end. Sample passport + I-797 produce correct facts. The 5 demo questions return cited answers.
-- **Sat–Sun Jun 28–29** — NO code pushes. Lock the launch posts in their final form. Sleep.
+- [ ] **Notarize the DMG from the non-MDM Mac.** The eBay-managed dev Mac
+      will intercept Apple's stapler — must be done from a non-managed
+      machine. Block out a morning before Jun 30.
+- [ ] **Final QA on a clean Mac.** DMG opens without Gatekeeper drama;
+      Ollama install flow works end-to-end; sample passport + I-797
+      produce correct facts; the 5 demo questions return cited answers.
+- [ ] **support@octovault.ai DNS forwarding** wired (user DNS).
+- [ ] **`bug-screenshots` storage bucket** confirmed in Supabase
+      dashboard (Storage → buckets) — public read, anon insert.
+      Without it, bug-report submissions succeed but screenshots are
+      silently dropped.
+
+**Risk acknowledged:** without the soft-launch window, the first
+strangers to install are launch-day visitors. Mitigation = make
+the clean-Mac QA pass *thorough*, not fast. The PostHog dashboard
+becomes the early-warning system: watch `download_mac_clicked` →
+release-counter delta hourly. If install rate is <10% of clicks,
+something is wrong with the DMG and you should pull from r/macapps
+before posting there.
 
 ---
 
