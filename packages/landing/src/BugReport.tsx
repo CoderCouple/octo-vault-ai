@@ -9,6 +9,8 @@
 //        title text NOT NULL,
 //        description text NOT NULL,
 //        steps text,
+//        expected text,
+//        actual text,
 //        email text,
 //        screenshot_urls text[],
 //        user_agent text,
@@ -16,6 +18,10 @@
 //      );
 //      ALTER TABLE bug_reports ENABLE ROW LEVEL SECURITY;
 //      CREATE POLICY "insert only" ON bug_reports FOR INSERT WITH CHECK (true);
+//
+//      If the table already exists without expected/actual:
+//        ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS expected text;
+//        ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS actual   text;
 //
 //   2. Create a Storage bucket named "bug-screenshots" (public read, anon insert).
 
@@ -176,23 +182,17 @@ function BugForm() {
           }),
         });
         if (!res.ok && res.status !== 201) throw new Error(await res.text());
-      } else {
-        // No Supabase — fall back to PostHog event only.
-        // In local dev this is a no-op; in production it means the env vars
-        // aren't set and the report is captured only in analytics.
-        track("bug_report_submitted", {
-          title:       title.trim(),
-          description: description.trim(),
-          has_email:   Boolean(email.trim()),
-          has_images:  images.length > 0,
-        });
       }
 
+      // Single event so PostHog counts match Supabase rows 1:1. When
+      // Supabase isn't configured the description payload rides along
+      // so the report is at least recoverable from PostHog.
       track("bug_report_submitted", {
-        title:          title.trim(),
-        has_email:      Boolean(email.trim()),
+        title:           title.trim(),
+        description:     SUPABASE_URL ? undefined : description.trim(),
+        has_email:       Boolean(email.trim()),
         has_screenshots: screenshotUrls.length > 0,
-        destination:    SUPABASE_URL ? "supabase" : "posthog_only",
+        destination:     SUPABASE_URL ? "supabase" : "posthog_only",
       });
 
       setStatus("ok");

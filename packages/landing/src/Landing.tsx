@@ -69,6 +69,7 @@ function Nav() {
         <nav className="hidden items-center gap-7 md:flex">
           {NAV.map((n) => (
             <a key={n.href} href={n.href}
+              data-attr={`nav-${n.href.replace(/^#/, "") || "home"}`}
               className="text-[14px] font-medium text-muted-foreground transition-colors hover:text-foreground">
               {n.label}
             </a>
@@ -3091,6 +3092,8 @@ function Footer() {
           </p>
           <div className="mt-5 flex gap-2.5">
             <a href="https://github.com/CoderCouple/octo-vault-ai" aria-label="GitHub"
+              data-attr="footer-github"
+              target="_blank" rel="noreferrer"
               className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:border-foreground/40">
               <Github className="h-4 w-4" />
             </a>
