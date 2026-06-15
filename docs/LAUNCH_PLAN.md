@@ -48,15 +48,7 @@ posting order, ready to ctrl-V on launch day.
 
 ### Inbound infra
 
-- [ ] **Bug-report endpoint — LAUNCH BLOCKER.** Verification on 2026-06-15 showed `public.bug_reports` does not exist on the live Supabase (`HTTP 404 PGRST205`). Every submission since `/bug-report` shipped has 4xx'd into the form's error state. Migration `supabase/migrations/20260615180000_create_bug_reports.sql` is staged locally; `supabase db push --linked --dry-run` confirms it's the only pending change. **Action: run `supabase db push --linked` (or paste the SQL into the Supabase dashboard), then re-run the smoke curl:**
-  ```sh
-  curl -sS -o /dev/null -w "%{http_code}\n" \
-    "$VITE_SUPABASE_URL/rest/v1/bug_reports?select=id&limit=0" \
-    -H "apikey: $VITE_SUPABASE_ANON_KEY" \
-    -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY"
-  # expect: 200
-  ```
-  Also verify `bug-screenshots` storage bucket exists in the Supabase dashboard (Storage → buckets); `uploadScreenshots()` writes there.
+- [x] Bug-report endpoint — migration `20260615180000_create_bug_reports.sql` applied to prod on 2026-06-15 (`supabase db push --linked`); anon-key GET returns 200, table is live. Still TODO: verify the `bug-screenshots` storage bucket exists in the Supabase dashboard (Storage → buckets), since `uploadScreenshots()` writes there — without it, reports submit fine but screenshots are dropped.
 - [ ] support@octovault.ai forwarding — user DNS
 - [x] PostHog funnel events audited — landing-side only by design (no desktop telemetry, per the privacy panel). Measurable funnel: landing visit → `download_mac_clicked` → GitHub release counter → `pricing_cta_clicked` → `waitlist_signup_completed` → `bug_report_submitted`. Nav + footer GitHub clicks now named events
 - [x] Pro waitlist CTAs — `cta-pricing-reserve-{pro,lifetime}` tracked + tier intent carried via sessionStorage into `waitlist_signup_completed` event and the Supabase `source` column. Day-one query: `select source, count(*) from waitlist group by source`
