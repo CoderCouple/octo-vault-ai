@@ -6,7 +6,8 @@
 import { DEFAULT_SETTINGS } from "@octovault/core";
 import type {
   EducationRecord, Entity, Event, ExperienceRecord, FieldRecord,
-  Profile, RelationshipEdge, Settings, StorageAdapter, StoredDocument, VaultProfile,
+  Profile, RelationshipEdge, Settings, StorageAdapter, StoredConversation,
+  StoredDocument, VaultProfile,
 } from "@octovault/core";
 import type { EmbeddingRecord } from "@octovault/core";
 
@@ -58,6 +59,10 @@ export const ipcStorageAdapter: StorageAdapter = {
   async saveEvent(event) { await s().saveEvent(event); },
   async deleteEvent(id) { await s().deleteEvent(id); },
   async deleteEventsFromDoc(documentId) { await s().deleteEventsFromDoc(documentId); },
+
+  async listConversations() { return safe(() => s().listConversations() as Promise<StoredConversation[]>, []); },
+  async saveConversation(c) { await s().saveConversation(c); },
+  async deleteConversation(id) { await s().deleteConversation(id); },
 
   async getSettings() {
     // When the vault is locked, the IPC will throw and we return defaults

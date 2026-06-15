@@ -33,6 +33,20 @@ export interface StoredDocument {
   fileDataUrl?: string;
 }
 
+// A single saved chat thread. The renderer owns the message-shape
+// schema; this layer treats the message list as opaque JSON so we
+// can ship new chat features without a vault migration. Pinned to a
+// version field so a future shape change can detect old rows.
+export interface StoredConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  // The renderer's ChatMessage[]; kept untyped here to stay decoupled.
+  messages: unknown[];
+  schemaVersion?: number;
+}
+
 export interface Settings {
   ollamaUrl: string;
   llmModel: string;
@@ -138,6 +152,15 @@ export interface StorageAdapter {
   getAllProfiles(): Promise<VaultProfile>;
   clearProfile(entityId: string): Promise<void>;
   deleteCandidatesFromDoc(documentId: string): Promise<void>;
+
+  // Conversations (chat history). Stored encrypted in SQLCipher /
+  // IndexedDB so the user's questions and the cited answers never live
+  // outside the vault. The renderer used to keep these in localStorage,
+  // which (a) survived a vault lock and (b) sat plaintext in Chromium's
+  // user-data folder — both broken against the on-device privacy claim.
+  listConversations(): Promise<StoredConversation[]>;
+  saveConversation(c: StoredConversation): Promise<void>;
+  deleteConversation(id: string): Promise<void>;
 
   // Settings
   getSettings(): Promise<Settings>;

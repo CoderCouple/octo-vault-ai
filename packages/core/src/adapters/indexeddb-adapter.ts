@@ -5,7 +5,7 @@
 
 import { get, set, del, keys, createStore, type UseStore } from "idb-keyval";
 import { DEFAULT_SETTINGS } from "../storage";
-import type { Settings, StorageAdapter, StoredDocument } from "../storage";
+import type { Settings, StorageAdapter, StoredConversation, StoredDocument } from "../storage";
 import type {
   EducationRecord, Entity, Event, ExperienceRecord, FieldRecord,
   Profile, ProfileKey, RelationshipEdge, VaultProfile,
@@ -23,6 +23,7 @@ const relStore = createStore("octovault-relationships", "edges");
 const eventStore = createStore("octovault-events", "events");
 const settingsStore = createStore("octovault-settings", "kv");
 const authStore = createStore("octovault-auth", "kv");
+const convoStore = createStore("octovault-conversations", "threads");
 
 function recordKey(entityId: string, fieldKey: ProfileKey): string {
   return `${entityId}|${fieldKey}`;
@@ -135,6 +136,17 @@ export const indexedDbAdapter: StorageAdapter = {
       if (e?.source?.documentId === documentId) await del(id, eventStore);
     }
   },
+
+  // --- Conversations ---
+  async listConversations() {
+    const ids = (await keys(convoStore)) as string[];
+    const recs = await Promise.all(ids.map((k) => getValue<StoredConversation>(convoStore, k)));
+    return recs
+      .filter((r): r is StoredConversation => !!r)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+  async saveConversation(c) { await putValue(convoStore, c.id, c); },
+  async deleteConversation(id) { await del(id, convoStore); },
 
   async deleteEntity(id) {
     await del(id, entityStore);

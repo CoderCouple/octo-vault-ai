@@ -76,15 +76,19 @@ export const desktopHost: AppHost = {
   surface: "desktop",
   storage: ipcStorageAdapter,
 
-  async isOllamaReachable() {
+  async isOllamaReachable(override) {
     try {
-      const r = await window.octovault!.ollama.health(await cfg());
+      const base = await cfg();
+      const effective = { ...base, ...(override ?? {}) };
+      const r = await window.octovault!.ollama.health(effective);
       return r.reachable;
     } catch { return false; }
   },
 
-  async ollamaEnsureRunning(): Promise<OllamaEnsureRunningResult> {
-    return window.octovault!.ollama.ensureRunning(await cfg());
+  async ollamaEnsureRunning(override): Promise<OllamaEnsureRunningResult> {
+    const base = await cfg();
+    const effective = { ...base, ...(override ?? {}) };
+    return window.octovault!.ollama.ensureRunning(effective);
   },
 
   async extractFromText(documentId, text): Promise<ExtractionResult> {

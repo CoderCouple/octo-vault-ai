@@ -115,6 +115,7 @@ const bridge = http.createServer((req, res) => {
         case "/embeddings":    return send(res, req, 200, vault.isOpen() ? vault.store.listEmbeddings() : []);
         case "/relationships": return send(res, req, 200, vault.isOpen() ? vault.store.listRelationships() : []);
         case "/events":        return send(res, req, 200, vault.isOpen() ? vault.store.listEvents() : []);
+        case "/conversations": return send(res, req, 200, vault.isOpen() ? vault.store.listConversations() : []);
         default:           return send(res, req, 404, { error: "not found" });
       }
     } catch (err) {
@@ -485,8 +486,27 @@ function createShortcutWindow() {
   shortcutWindow.on("closed", () => { shortcutWindow = null; });
 }
 
+// Reject obviously malformed URLs up-front. WHATWG-spec ports are
+// [0, 65535]; Node throws on construction for anything outside that,
+// but the upstream fetch call's error gets swallowed by a generic
+// catch which then looks indistinguishable from "Ollama not running."
+// Validating here lets the renderer trust a `reachable: false` result.
+function isValidOllamaUrl(url: string | undefined | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    if (u.port !== "") {
+      const p = Number(u.port);
+      if (!Number.isInteger(p) || p < 1 || p > 65535) return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
 // IPC: Ollama proxy. Renderer asks; main fetches; no CORS.
 ipcMain.handle("ollama.health", async (_e, cfg: OllamaCfg) => {
+  if (!isValidOllamaUrl(cfg.url)) return { reachable: false };
   try {
     const r = await fetch(`${cfg.url}/api/tags`);
     return { reachable: r.ok };
@@ -508,6 +528,9 @@ async function checkOllamaReachable(url: string): Promise<boolean> {
 
 ipcMain.handle("ollama.ensureRunning", async (_e, cfg: OllamaCfg): Promise<EnsureRunningResult> => {
   try {
+    if (!isValidOllamaUrl(cfg.url)) {
+      return { status: "error", message: `"${cfg.url}" is not a valid URL. Reset to http://localhost:11434 in Settings.` };
+    }
     if (await checkOllamaReachable(cfg.url)) return { status: "running" };
 
     let binaryExists = false;
@@ -732,6 +755,9 @@ ipcMain.handle("store.listEvents",              () => whenOpen(() => vault.store
 ipcMain.handle("store.saveEvent",               (_e, event) => whenOpen(() => vault.store.saveEvent(event), null));
 ipcMain.handle("store.deleteEvent",             (_e, id) => whenOpen(() => vault.store.deleteEvent(id), null));
 ipcMain.handle("store.deleteEventsFromDoc",     (_e, documentId) => whenOpen(() => vault.store.deleteEventsFromDoc(documentId), null));
+ipcMain.handle("store.listConversations",       () => whenOpen(() => vault.store.listConversations(), [] as unknown[]));
+ipcMain.handle("store.saveConversation",        (_e, c) => whenOpen(() => vault.store.saveConversation(c), null));
+ipcMain.handle("store.deleteConversation",      (_e, id) => whenOpen(() => vault.store.deleteConversation(id), null));
 ipcMain.handle("store.getSettings",             () => whenOpen(() => vault.store.getSettings(), {}));
 ipcMain.handle("store.updateSettings",          (_e, patch) => whenOpen(() => vault.store.updateSettings(patch), patch ?? {}));
 ipcMain.handle("store.getAuthBlob",             () => whenOpen(() => vault.store.getAuthBlob(), null));

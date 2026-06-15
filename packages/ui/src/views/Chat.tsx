@@ -7,7 +7,7 @@ import { ArrowUp, AtSign, FileText, Loader2, MessageSquarePlus, PanelLeftClose, 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import type { Entity, QaCitation, QaResult, QaTurn, StoredDocument } from "@octovault/core";
+import type { Entity, QaCitation, QaResult, QaTurn, StoredConversation, StoredDocument } from "@octovault/core";
 import { useAppContext } from "../context";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -64,23 +64,77 @@ interface Conversation {
   updatedAt: number;
 }
 
-const STORAGE_KEY = "octovault.chat.conversations.v1";
+// activeId stays in localStorage — it's just a UI cursor (which thread
+// is selected), not personal data. The conversations themselves moved
+// into the encrypted vault to keep questions + cited answers on the
+// same threat model as the documents they reference.
 const ACTIVE_KEY = "octovault.chat.activeId.v1";
+// Legacy localStorage key. Read once on first load so users coming from
+// an older build don't lose their chat history; immediately re-written
+// into the vault and cleared.
+const LEGACY_KEY = "octovault.chat.conversations.v1";
 
-function loadConversations(): Conversation[] {
-  try { return (JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as Conversation[]); }
-  catch { return []; }
-}
-function saveConversations(c: Conversation[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(c));
+function asConversation(c: StoredConversation): Conversation {
+  return {
+    id: c.id,
+    title: c.title,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    messages: (c.messages as ChatMessage[]) ?? [],
+  };
 }
 
 export function Chat() {
-  const { host, documents, entities } = useAppContext();
-  const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
+  const { host, documents, entities, readOnly } = useAppContext();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY));
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Initial load from the encrypted vault. Runs once. Handles the
+  // one-time migration: if the legacy localStorage key has data and
+  // the vault has none, copy the localStorage rows into the vault and
+  // clear the key. After this runs, no chat content lives outside
+  // SQLCipher / encrypted IndexedDB.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let fromStore: StoredConversation[] = [];
+      try { fromStore = await host.storage.listConversations(); } catch { /* vault locked etc */ }
+
+      let merged: Conversation[] = fromStore.map(asConversation);
+
+      // Legacy migration: only run when the vault is writeable (extension
+      // is read-only against the desktop bridge; the migration should
+      // happen the next time the user opens the desktop app).
+      if (!readOnly) {
+        try {
+          const raw = localStorage.getItem(LEGACY_KEY);
+          if (raw && raw !== "[]") {
+            const legacy = JSON.parse(raw) as Conversation[];
+            if (Array.isArray(legacy) && legacy.length > 0) {
+              const known = new Set(merged.map((c) => c.id));
+              const toMigrate = legacy.filter((c) => !known.has(c.id));
+              for (const c of toMigrate) {
+                try { await host.storage.saveConversation(c as unknown as StoredConversation); } catch { /* ignore — best-effort */ }
+              }
+              merged = [...merged, ...toMigrate].sort((a, b) => b.updatedAt - a.updatedAt);
+            }
+            // Even if there was nothing to migrate, remove the key so
+            // the plaintext copy doesn't linger.
+            try { localStorage.removeItem(LEGACY_KEY); } catch { /* ignore */ }
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      if (!cancelled) {
+        setConversations(merged);
+        setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [host.storage, readOnly]);
   // Collapsible history rail. Persisted so the user's preference
   // survives reloads. Useful in narrow surfaces (Chrome side panel,
   // popup) where the 240px rail crowds the message column.
@@ -93,8 +147,11 @@ export function Chat() {
   }, [historyOpen]);
   const scroller = useRef<HTMLDivElement>(null);
 
-  // Ensure there's always one active conversation.
+  // Ensure there's always one active conversation. Gated on `loaded`
+  // so we don't synthesize a new chat before the initial vault read
+  // returns (which would race and create a duplicate "New chat").
   useEffect(() => {
+    if (!loaded) return;
     if (!activeId || !conversations.some((c) => c.id === activeId)) {
       if (conversations.length === 0) {
         newConversation();
@@ -102,9 +159,25 @@ export function Chat() {
         setActiveId(conversations[0].id);
       }
     }
-  }, [activeId, conversations]);
+  }, [activeId, conversations, loaded]);
 
-  useEffect(() => { saveConversations(conversations); }, [conversations]);
+  // Per-conversation upsert to the vault. We track each thread's last-
+  // persisted updatedAt so we only write rows that actually changed,
+  // not the entire history on every keystroke. Deletions are handled
+  // explicitly in deleteConversation() so we don't need to diff for
+  // disappearances here.
+  const persistedAt = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!loaded || readOnly) return;
+    for (const c of conversations) {
+      const last = persistedAt.current.get(c.id);
+      if (last === undefined || c.updatedAt > last) {
+        persistedAt.current.set(c.id, c.updatedAt);
+        void host.storage.saveConversation(c as unknown as StoredConversation);
+      }
+    }
+  }, [conversations, loaded, readOnly, host.storage]);
+
   useEffect(() => { if (activeId) localStorage.setItem(ACTIVE_KEY, activeId); }, [activeId]);
 
   useEffect(() => {
@@ -132,6 +205,10 @@ export function Chat() {
 
   function deleteConversation(id: string) {
     setConversations((cs) => cs.filter((c) => c.id !== id));
+    persistedAt.current.delete(id);
+    if (!readOnly) {
+      void host.storage.deleteConversation(id).catch(() => { /* ignore */ });
+    }
     if (activeId === id) setActiveId(null);
   }
 

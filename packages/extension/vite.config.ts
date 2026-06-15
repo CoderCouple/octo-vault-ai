@@ -6,5 +6,9 @@ import manifest from "./src/manifest";
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
   server: { port: 5173, strictPort: true, hmr: { port: 5174 } },
-  build: { target: "esnext" },
+  build: {
+    target: "esnext",
+    minify: false,
+    sourcemap: true,
+  },
 });

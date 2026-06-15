@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS settings (
   value        TEXT NOT NULL
 );
 
+-- Chat conversations. Stored inside SQLCipher so the user's questions
+-- and the cited answers stay encrypted at rest, alongside the documents
+-- they reference. Each row is one thread; the message list is JSON
+-- because the renderer's schema is volatile.
+CREATE TABLE IF NOT EXISTS conversations (
+  id          TEXT PRIMARY KEY,
+  updated_at  INTEGER NOT NULL,
+  data        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS conversations_updated ON conversations(updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS auth (
   key          TEXT PRIMARY KEY,
   blob         BLOB NOT NULL
@@ -373,6 +384,23 @@ export const store = {
   },
   deleteEventsFromDoc(documentId: string) {
     requireDb().prepare("DELETE FROM events WHERE document_id = ?").run(documentId);
+  },
+
+  // Conversations (chat threads). Newest-first per the index.
+  listConversations() {
+    return requireDb().prepare("SELECT data FROM conversations ORDER BY updated_at DESC").all()
+      .map((r) => JSON.parse((r as { data: string }).data));
+  },
+  saveConversation(c: { id: string; updatedAt?: number }) {
+    const now = c.updatedAt ?? Date.now();
+    const json = JSON.stringify({ ...c, updatedAt: now });
+    requireDb().prepare(
+      "INSERT INTO conversations(id, updated_at, data) VALUES (?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, data = excluded.data"
+    ).run(c.id, now, json);
+  },
+  deleteConversation(id: string) {
+    requireDb().prepare("DELETE FROM conversations WHERE id = ?").run(id);
   },
 
   // Settings (stored under a fixed "settings" key)

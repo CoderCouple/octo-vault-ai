@@ -19,6 +19,7 @@ import { cn } from "../lib/utils";
 import { tx } from "../lib/brand";
 
 const STORAGE_KEY = "octovault.firstSteps.dismissed";
+const RESET_EVENT = "octovault:firstSteps:reset";
 
 interface Step {
   id: string;
@@ -30,6 +31,11 @@ interface Step {
 export function FirstSteps() {
   const { documents, entities } = useAppContext();
   const [dismissed, setDismissed] = useState<boolean>(() => localStorage.getItem(STORAGE_KEY) === "1");
+  // Becomes true when the user clicks Show first-steps tour again in Settings.
+  // Lets the checklist render even when allDone is true (which would
+  // otherwise hide it forever — common on accounts that already imported
+  // a doc and started a chat).
+  const [forceShow, setForceShow] = useState(false);
   const [chatStarted, setChatStarted] = useState<boolean>(() => {
     try {
       const cs = JSON.parse(localStorage.getItem("octovault.chat.conversations.v1") ?? "[]") as Array<{ messages?: unknown[] }>;
@@ -50,6 +56,15 @@ export function FirstSteps() {
     return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
   }, []);
 
+  // Listen for the Settings → Show first-steps tour again button. The
+  // helper clears the storage flag and dispatches a CustomEvent so any
+  // mounted FirstSteps card re-reads state without a refresh.
+  useEffect(() => {
+    const onReset = () => { setDismissed(false); setForceShow(true); };
+    window.addEventListener(RESET_EVENT, onReset);
+    return () => window.removeEventListener(RESET_EVENT, onReset);
+  }, []);
+
   const steps: Step[] = [
     { id: "doc", label: "Import your first document", hint: "Drop a PDF or image in the Documents panel below.", done: documents.length > 0 },
     { id: "entity", label: "Add a family member", hint: "Manage who lives in your vault under Entities. Optional — extractor will create them too.", done: entities.length > 1 },
@@ -59,7 +74,11 @@ export function FirstSteps() {
   const completed = steps.filter((s) => s.done).length;
   const allDone = completed === steps.length;
 
-  if (dismissed || allDone) return null;
+  if (dismissed) return null;
+  // Hide when everything's done, EXCEPT when the user explicitly asked to
+  // see the tour again from Settings — then we render the all-checked
+  // card so they get visual confirmation the reset worked.
+  if (allDone && !forceShow) return null;
 
   return (
     <Card className="space-y-2 p-3">
@@ -93,6 +112,9 @@ export function FirstSteps() {
 }
 
 // Allow Settings to reset the dismissal so the user can re-run the tour.
+// Notifies any mounted FirstSteps card via a custom event so it can
+// update its React state without a page reload.
 export function resetFirstSteps() {
-  localStorage.removeItem(STORAGE_KEY);
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent(RESET_EVENT)); } catch { /* ignore */ }
 }

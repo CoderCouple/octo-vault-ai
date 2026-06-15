@@ -25,6 +25,9 @@ export function SettingsView() {
 
   async function rerunOnboarding() {
     // Resetting Self's name/email re-triggers the mandatory modal in App.tsx.
+    // Also clear the dev skip flag — once it's set, App.tsx short-circuits
+    // the modal regardless of Self state, which silently breaks this button.
+    try { localStorage.removeItem("octovault.skipOnboarding"); } catch { /* ignore */ }
     await storage.saveEntity({
       id: "self", name: "Self", email: "",
       relationship: "self", initials: "ME",

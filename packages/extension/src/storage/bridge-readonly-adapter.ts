@@ -5,7 +5,7 @@
 import {
   DEFAULT_SETTINGS,
   type EmbeddingRecord, type FieldRecord, type RelationshipEdge,
-  type Settings, type StorageAdapter, type StoredDocument,
+  type Settings, type StorageAdapter, type StoredConversation, type StoredDocument,
 } from "@octovault/core";
 import type {
   EducationRecord, Entity, Event, ExperienceRecord, Profile, ProfileKey, VaultProfile,
@@ -67,6 +67,13 @@ export const bridgeReadOnlyAdapter: StorageAdapter = {
   async saveEvent(_e) { throw new ReadOnlyError(); },
   async deleteEvent(_id) { throw new ReadOnlyError(); },
   async deleteEventsFromDoc(_documentId: string) { throw new ReadOnlyError(); },
+
+  // Conversations — chat history is owned by the desktop vault. The
+  // extension reads it via /conversations; writes throw so the user
+  // edits chat history from the desktop app, not a popup.
+  async listConversations() { return get<StoredConversation[]>("/conversations", []); },
+  async saveConversation(_c) { throw new ReadOnlyError(); },
+  async deleteConversation(_id) { throw new ReadOnlyError(); },
 
   // Documents
   async listDocuments() { return get<StoredDocument[]>("/documents", []); },

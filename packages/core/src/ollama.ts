@@ -230,6 +230,59 @@ export function parseModelJson<T>(raw: string): T {
   throw new Error(`Ollama returned non-JSON (even after repair): ${raw.slice(0, 200)}`);
 }
 
+// Stream `ollama pull` from inside the app so non-technical users never
+// have to open a terminal. Ollama's POST /api/pull emits NDJSON like:
+//   {"status":"pulling manifest"}
+//   {"status":"downloading","digest":"sha256:…","total":4661211808,"completed":1024}
+//   {"status":"verifying sha256 digest"}
+//   {"status":"writing manifest"}
+//   {"status":"success"}
+// onProgress fires for every line — UI uses `completed/total` to draw a
+// bar and the `status` string for a label.
+export interface PullProgress {
+  status: string;
+  digest?: string;
+  total?: number;
+  completed?: number;
+}
+
+export async function pullModel(
+  cfg: OllamaConfig,
+  modelName: string,
+  onProgress: (p: PullProgress) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await fetch(`${cfg.url}/api/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: modelName, stream: true }),
+    signal,
+  });
+  if (!r.ok || !r.body) throw new Error(`Ollama pull failed: ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line) as PullProgress & { error?: string };
+        if (obj.error) throw new Error(obj.error);
+        onProgress(obj);
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("Ollama")) throw err;
+        // Skip malformed lines — Ollama very occasionally splits NDJSON.
+      }
+    }
+  }
+}
+
 export async function embed(cfg: OllamaConfig, text: string): Promise<number[]> {
   const r = await fetch(`${cfg.url}/api/embeddings`, {
     method: "POST",

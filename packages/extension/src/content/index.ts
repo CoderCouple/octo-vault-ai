@@ -803,7 +803,7 @@ async function setFillValue(el: HTMLElement, value: string): Promise<boolean> {
   if (el.getAttribute("role") === "combobox") {
     el.focus();
     el.click();
-    const wrote = await setFillValue(el, value);
+    const wrote = setNativeValue(el, value);
     if (!wrote) return false;
     await sleep(180);
     const clicked = clickMatchingOption(el.ownerDocument, value);
@@ -1224,7 +1224,7 @@ async function runFill() {
       });
       continue;
     }
-    const wrote = setNativeValue(el, value);
+    const wrote = await setFillValue(el, value);
     if (!wrote) {
       rows.push({
         fieldId: m.fieldId, label, status: "skipped",

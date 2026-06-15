@@ -41,7 +41,11 @@ export const extensionHost: AppHost = {
   storage: indexedDbAdapter,             // base for settings + auth blob
   sources,
   defaultSourceId: "desktop",            // auto-selected if reachable; else falls through to local
-  async isOllamaReachable() {
+  async isOllamaReachable(_override) {
+    // The extension proxies the check through its background worker
+    // which talks to Ollama at the bundled URL. The override hint is
+    // ignored — the extension can't override URLs cross-origin without
+    // a permissions prompt that we'd rather not show.
     try {
       return (await bgSend<{ reachable: boolean }>({ type: "ollama.health" })).reachable;
     } catch { return false; }

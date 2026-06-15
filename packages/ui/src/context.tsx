@@ -28,10 +28,15 @@ export type OllamaEnsureRunningResult =
 export interface AppHost {
   storage: StorageAdapter;
   surface: "extension" | "desktop";
-  isOllamaReachable(): Promise<boolean>;
+  // Optional cfg lets callers (notably Onboarding) pin the check to a
+  // specific URL from React state rather than letting the host re-read
+  // settings from IPC. Without the override, the wizard's "the app talks
+  // to Ollama at <url>" line and the underlying reachability probe can
+  // drift apart when storage hasn't caught up to the latest input.
+  isOllamaReachable(cfg?: Partial<import("@octovault/core").OllamaConfig>): Promise<boolean>;
   // Optional: only the desktop surface can attempt to start the local
   // Ollama process. The extension has no access to system binaries.
-  ollamaEnsureRunning?(): Promise<OllamaEnsureRunningResult>;
+  ollamaEnsureRunning?(cfg?: Partial<import("@octovault/core").OllamaConfig>): Promise<OllamaEnsureRunningResult>;
   extractFromText(documentId: string, text: string): Promise<ExtractionResult>;
   embed(text: string): Promise<number[]>;
   ask(question: string, opts?: AskOptions): Promise<QaResult>;

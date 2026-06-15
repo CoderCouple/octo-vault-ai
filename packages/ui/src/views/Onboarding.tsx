@@ -16,8 +16,8 @@ import {
   MessageSquare, ShieldCheck, Sparkles, WifiOff,
 } from "lucide-react";
 import {
-  addUserCandidate, hasModel, initialsFor, listModels, normalizeValue, SELF_ENTITY_ID,
-  type Entity, type OllamaConfig,
+  addUserCandidate, hasModel, initialsFor, listModels, normalizeValue, pullModel,
+  SELF_ENTITY_ID, type Entity, type OllamaConfig, type PullProgress,
 } from "@octovault/core";
 import { useAppContext, type AppHost, type OllamaEnsureRunningResult } from "../context";
 import {
@@ -45,21 +45,26 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   useEffect(() => {
+    let cancelled = false;
+    const cfg: OllamaConfig = {
+      url: settings.ollamaUrl,
+      llmModel: settings.llmModel,
+      embeddingModel: settings.embeddingModel,
+    };
     const check = async () => {
-      const reachable = await host.isOllamaReachable();
+      // Pass cfg explicitly so the check tests the exact URL the user
+      // sees in the dialog header, not whatever the host's storage
+      // happens to return (which lagged behind on locked vaults).
+      const reachable = await host.isOllamaReachable(cfg);
+      if (cancelled) return;
       setOllamaOk(reachable);
       if (reachable) {
-        const cfg: OllamaConfig = {
-          url: settings.ollamaUrl,
-          llmModel: settings.llmModel,
-          embeddingModel: settings.embeddingModel,
-        };
         setInstalledModels(await listModels(cfg));
       } else setInstalledModels([]);
     };
     void check();
     const id = setInterval(check, 4000);
-    return () => clearInterval(id);
+    return () => { cancelled = true; clearInterval(id); };
   }, [host, settings.ollamaUrl, settings.llmModel, settings.embeddingModel]);
 
   // Ollama tags an untagged pull as `:latest`, so a strict `===`
@@ -199,7 +204,14 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
         <div className="relative min-h-[300px] overflow-hidden px-6">
           {step === "welcome"   && <WelcomeStep />}
           {step === "ollama"    && <OllamaStep ok={ollamaOk} url={settings.ollamaUrl} host={host} onReachable={() => setOllamaOk(true)} />}
-          {step === "models"    && <ModelsStep ok={ollamaOk} llm={settings.llmModel} embed={settings.embeddingModel} llmInstalled={llmInstalled} embedInstalled={embedInstalled} />}
+          {step === "models"    && <ModelsStep
+              ok={ollamaOk}
+              llm={settings.llmModel}
+              embed={settings.embeddingModel}
+              llmInstalled={llmInstalled}
+              embedInstalled={embedInstalled}
+              cfg={{ url: settings.ollamaUrl, llmModel: settings.llmModel, embeddingModel: settings.embeddingModel }}
+            />}
           {step === "you"       && <YouStep name={name} email={email} setName={setName} setEmail={setEmail} error={error} />}
           {step === "password"  && <PasswordStep pw1={pw1} pw2={pw2} setPw1={setPw1} setPw2={setPw2} error={error} />}
           {step === "done"      && <DoneStep />}
@@ -310,6 +322,12 @@ function OllamaStep({
   host: AppHost;
   onReachable: () => void;
 }) {
+  // Pin both the ensure-running probe and the manual retry to the URL
+  // the user is staring at, not whatever the host adapter resolves on
+  // its own. Without this, the auto-probe can "succeed" against the
+  // default localhost:11434 even after the user changed the URL to
+  // something invalid in Settings.
+  const ensureCfg = { url } as const;
   type FixState = "idle" | "working" | "done";
   const [fixState, setFixState] = useState<FixState>("idle");
   const [fixResult, setFixResult] = useState<OllamaEnsureRunningResult | null>(null);
@@ -324,7 +342,7 @@ function OllamaStep({
     setFixState("working");
     setFixResult(null);
     try {
-      const result = await host.ollamaEnsureRunning();
+      const result = await host.ollamaEnsureRunning(ensureCfg);
       setFixResult(result);
       setFixState("done");
       if (result.status === "running" || result.status === "started") {
@@ -336,8 +354,28 @@ function OllamaStep({
     }
   }
 
+  // As soon as we know Ollama isn't reachable, probe once automatically.
+  // The probe tells us whether the binary is missing (so we eagerly show
+  // the Install CTA) or just not running (so we show Start). Without
+  // this eager probe the user has to click "Fix automatically" first
+  // before they even discover they don't have Ollama — confusing on a
+  // fresh Mac.
+  const probed = useRef(false);
+  useEffect(() => {
+    if (ok === false && !probed.current && host.ollamaEnsureRunning && fixState === "idle") {
+      probed.current = true;
+      void handleFix();
+    }
+    if (ok === true) {
+      probed.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ok]);
+
   const notInstalled = fixResult?.status === "not_installed";
-  const downloadUrl = notInstalled ? (fixResult as { status: "not_installed"; downloadUrl: string }).downloadUrl : "https://ollama.com/download";
+  const downloadUrl = notInstalled
+    ? (fixResult as { status: "not_installed"; downloadUrl: string }).downloadUrl
+    : "https://ollama.com/download";
 
   return (
     <div className="space-y-4 py-2">
@@ -355,26 +393,24 @@ function OllamaStep({
           : <Loader2 className="h-4 w-4 animate-spin" />}
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">
-            {ok === true ? "Ollama is running" : ok === false ? "Ollama not reachable" : "Checking…"}
+            {ok === true ? "Ollama is running"
+              : ok === false ? (notInstalled ? "Ollama is not installed" : "Ollama not reachable")
+              : "Checking…"}
           </div>
           <div className={tx.muted}>
-            {ok === true ? "All good. Move on to models." : `Expected at ${url}.`}
+            {ok === true ? "All good. Move on to models."
+              : notInstalled ? "Install it once — OctoVault then drives it automatically."
+              : `Expected at ${url}.`}
           </div>
         </div>
       </div>
 
       {ok !== true && wasUnreachable.current && host.ollamaEnsureRunning && (
         <div className="space-y-3">
-          {fixState === "idle" && (
-            <Button size="sm" variant="outline" onClick={() => void handleFix()} className="w-full">
-              Fix automatically
-            </Button>
-          )}
-
           {fixState === "working" && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Starting Ollama…
+              Checking for Ollama…
             </div>
           )}
 
@@ -386,20 +422,24 @@ function OllamaStep({
                 </div>
               )}
               {notInstalled && (
-                <div className="space-y-2">
-                  <p className={tx.muted}>Ollama is not installed on this machine.</p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => window.open(downloadUrl, "_blank")}
-                    >
-                      <Download className="h-3.5 w-3.5" /> Download Ollama
+                <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-3">
+                  <div className="text-[13px] leading-relaxed">
+                    Ollama is the local AI runtime OctoVault runs on. Free,
+                    open source, ~600 MB. One-time install — after that, OctoVault
+                    starts and manages it for you.
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => window.open(downloadUrl, "_blank")}>
+                      <Download className="h-3.5 w-3.5" /> Download Ollama for Mac
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => void handleFix()}>
-                      Retry
+                      I've installed it — retry
                     </Button>
                   </div>
-                  <p className={tx.muted}>After installing, click Retry.</p>
+                  <p className={tx.muted}>
+                    Opens ollama.com/download. After installing, this screen
+                    auto-detects it within a few seconds.
+                  </p>
                 </div>
               )}
               {fixResult.status === "error" && (
@@ -418,13 +458,13 @@ function OllamaStep({
             onClick={() => setShowManual((v) => !v)}
           >
             <ChevronDown className={cn("h-3 w-3 transition-transform", showManual && "rotate-180")} />
-            Or do it manually
+            Or install manually
           </button>
 
           {showManual && (
             <div className="space-y-2">
               <code className="block whitespace-pre rounded bg-muted px-3 py-2 text-[11px]">
-{`# macOS
+{`# macOS — via Homebrew
 brew install ollama
 brew services start ollama
 
@@ -444,10 +484,11 @@ ollama serve &`}
 }
 
 function ModelsStep({
-  ok, llm, embed, llmInstalled, embedInstalled,
+  ok, llm, embed, llmInstalled, embedInstalled, cfg,
 }: {
   ok: boolean | null; llm: string; embed: string;
   llmInstalled: boolean; embedInstalled: boolean;
+  cfg: OllamaConfig;
 }) {
   return (
     <div className="space-y-4 py-2">
@@ -455,8 +496,8 @@ function ModelsStep({
         Two on-device models. <strong>{llm}</strong> handles extraction and chat;{" "}
         <strong>{embed}</strong> handles search embeddings. One-time downloads.
       </p>
-      <ModelRow name={llm} role="LLM" installed={ok === true && llmInstalled} reachable={ok === true} />
-      <ModelRow name={embed} role="Embedding" installed={ok === true && embedInstalled} reachable={ok === true} />
+      <ModelRow name={llm} role="LLM" installed={ok === true && llmInstalled} reachable={ok === true} cfg={cfg} />
+      <ModelRow name={embed} role="Embedding" installed={ok === true && embedInstalled} reachable={ok === true} cfg={cfg} />
       {ok === false && (
         <p className={tx.muted}>Start Ollama on the previous step first.</p>
       )}
@@ -464,9 +505,48 @@ function ModelsStep({
   );
 }
 
-function ModelRow({ name, role, installed, reachable }: { name: string; role: string; installed: boolean; reachable: boolean }) {
+function ModelRow({ name, role, installed, reachable, cfg }: {
+  name: string; role: string; installed: boolean; reachable: boolean; cfg: OllamaConfig;
+}) {
+  type PullState =
+    | { kind: "idle" }
+    | { kind: "pulling"; progress: PullProgress }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<PullState>({ kind: "idle" });
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Auto-reset once the parent's listModels() loop sees the new model.
+  useEffect(() => {
+    if (installed && state.kind === "pulling") setState({ kind: "idle" });
+  }, [installed, state.kind]);
+
+  async function handlePull() {
+    abortRef.current = new AbortController();
+    setState({ kind: "pulling", progress: { status: "starting" } });
+    try {
+      await pullModel(cfg, name, (p) => setState({ kind: "pulling", progress: p }), abortRef.current.signal);
+      // Stay in "pulling" until the parent re-detects the model; the
+      // useEffect above will flip us back to idle. Avoids a confusing
+      // "installed" flash before the detection loop catches up.
+    } catch (e) {
+      if ((e as Error).name === "AbortError") {
+        setState({ kind: "idle" });
+        return;
+      }
+      setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  function handleCancel() {
+    abortRef.current?.abort();
+  }
+
+  const pct = state.kind === "pulling" && state.progress.total
+    ? Math.min(100, Math.round(((state.progress.completed ?? 0) / state.progress.total) * 100))
+    : null;
+
   return (
-    <div className={cn("space-y-1.5 rounded-md border px-3 py-2.5", installed && "border-foreground")}>
+    <div className={cn("space-y-2 rounded-md border px-3 py-2.5", installed && "border-foreground")}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {installed ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4 text-muted-foreground" />}
@@ -475,13 +555,59 @@ function ModelRow({ name, role, installed, reachable }: { name: string; role: st
         </div>
         <Badge variant={installed ? "outline" : "muted"}>{installed ? "installed" : "missing"}</Badge>
       </div>
-      {!installed && reachable && (
-        <code className="block rounded bg-muted px-2 py-1 text-[11px]">
-          ollama pull {name}
-        </code>
+
+      {!installed && reachable && state.kind === "idle" && (
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => void handlePull()} className="h-7 px-2.5 text-xs">
+            <Download className="h-3.5 w-3.5" /> Download model
+          </Button>
+          <code className="rounded bg-muted px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
+            or: ollama pull {name}
+          </code>
+        </div>
+      )}
+
+      {state.kind === "pulling" && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span className="truncate">{state.progress.status}</span>
+            <div className="flex items-center gap-2">
+              {pct !== null && <span className="tabular-nums">{pct}%</span>}
+              <button onClick={handleCancel} className="hover:text-foreground">cancel</button>
+            </div>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-foreground transition-[width] duration-200 ease-out"
+              style={{ width: pct !== null ? `${pct}%` : "12%" }}
+            />
+          </div>
+          {state.progress.total && (
+            <div className="text-[10.5px] tabular-nums text-muted-foreground">
+              {fmtBytes(state.progress.completed ?? 0)} / {fmtBytes(state.progress.total)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {state.kind === "error" && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-foreground">{state.message}</p>
+          <Button size="sm" variant="outline" onClick={() => void handlePull()} className="h-7 px-2.5 text-xs">
+            Retry
+          </Button>
+        </div>
       )}
     </div>
   );
+}
+
+// Bytes → human-readable, anchored at MB/GB which is what Ollama
+// model pulls actually fall in (qwen3:8b ≈ 4.7GB, nomic-embed ≈ 274MB).
+function fmtBytes(n: number): string {
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function YouStep({
