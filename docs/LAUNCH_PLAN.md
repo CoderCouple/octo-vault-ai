@@ -1,18 +1,19 @@
 # OctoVault launch plan
 
-Target: **Tue 2026-06-30, 07:30 PT** (Show HN). Tuesday/Wednesday have
-the best HN+PH attention; avoids US July 4 chop.
+Target: **Tue 2026-06-16, 07:30 PT** (Show HN). Tuesday is the right
+HN-attention slot, and the user moved the date forward 14 days after
+finishing the Phase 0 sweep early.
 
-Last updated: 2026-06-15 (T-15) — after the Phase 0 product sweep
-(telemetry panel, waitlist tier intent, PostHog funnel audit, bug-report
-schema fix).
+Last updated: 2026-06-15 (T-1) — Phase 0 product/assets/copy all done.
+Launch is tomorrow. Everything in "Pre-launch prerequisites" below
+must land **today**.
 
 Companion: `docs/LAUNCH_COPY.md` — every public-facing post in
 posting order, ready to ctrl-V on launch day.
 
 ---
 
-## Phase 0 — Pre-flight (now → Mon Jun 22)
+## Phase 0 — Pre-flight (complete as of 2026-06-15)
 
 **Goal: every asset is real before you talk to anyone.**
 
@@ -55,34 +56,49 @@ posting order, ready to ctrl-V on launch day.
 
 ---
 
-## Pre-launch prerequisites (do before Tue Jun 30)
+## Pre-launch prerequisites (must land TODAY — 2026-06-15)
 
-Soft launch is skipped — going straight from "ready" to Show HN. These
-items still must land before launch day:
+Launch is tomorrow morning, 07:30 PT. These four items are the
+remaining gate between "Phase 0 done" and "Show HN goes live":
 
-- [ ] **Notarize the DMG from the non-MDM Mac.** The eBay-managed dev Mac
-      will intercept Apple's stapler — must be done from a non-managed
-      machine. Block out a morning before Jun 30.
-- [ ] **Final QA on a clean Mac.** DMG opens without Gatekeeper drama;
-      Ollama install flow works end-to-end; sample passport + I-797
-      produce correct facts; the 5 demo questions return cited answers.
-- [ ] **support@octovault.ai DNS forwarding** wired (user DNS).
+- [ ] **Notarize the DMG from the non-MDM Mac.** The eBay-managed dev
+      Mac will intercept Apple's stapler — must be done from a
+      non-managed machine. Allow ~30-60 min including Apple's notary
+      queue. **Do this first; everything else can fail and the day
+      survives, but a non-notarized DMG = Gatekeeper warnings = the
+      privacy story dies in the comments.**
+- [ ] **Final QA on a clean Mac.** Fresh user account or VM. DMG opens
+      without Gatekeeper drama; Ollama install flow works end-to-end;
+      sample passport + I-797 produce correct facts; the 5 demo
+      questions in `LAUNCH_COPY.md` return cited answers.
+- [ ] **support@octovault.ai DNS forwarding** wired. DNS can take 1-4h
+      to propagate — do it now. If it can't land before 07:30 PT,
+      strip the `support@` line from launch copy and use a personal
+      email instead; don't ship a dead address.
 - [ ] **`bug-screenshots` storage bucket** confirmed in Supabase
-      dashboard (Storage → buckets) — public read, anon insert.
-      Without it, bug-report submissions succeed but screenshots are
-      silently dropped.
+      dashboard (Storage → buckets) — public read, anon insert. 30-sec
+      click. Without it, bug-report text submissions succeed but
+      screenshots are silently dropped.
 
-**Risk acknowledged:** without the soft-launch window, the first
-strangers to install are launch-day visitors. Mitigation = make
-the clean-Mac QA pass *thorough*, not fast. The PostHog dashboard
-becomes the early-warning system: watch `download_mac_clicked` →
-release-counter delta hourly. If install rate is <10% of clicks,
-something is wrong with the DMG and you should pull from r/macapps
-before posting there.
+**Risk acknowledged (T-1 compression):** soft launch is skipped *and*
+the launch window moved forward 14 days. The first strangers to
+install are launch-day visitors with no prior QA on the public DMG.
+Mitigations:
+1. The clean-Mac QA pass must be *thorough*, not fast. Burn an hour
+   on it tonight; don't rationalize "it worked on the dev Mac".
+2. PostHog is the early-warning system. Watch
+   `download_mac_clicked` → GitHub release counter hourly. If
+   install rate is <10% of clicks during the first hour, something
+   is wrong with the DMG — pause the r/macapps post.
+3. Have a kill-switch ready: if the bug-report inbox lights up with
+   the same crash signature in the first 2 hours, pull the Show HN
+   link from social and let the HN thread die naturally rather than
+   amplifying. A failed launch you can re-do; a humiliated one is
+   harder.
 
 ---
 
-## Phase 2 — Launch day (Tue Jun 30)
+## Phase 2 — Launch day (Tue Jun 16)
 
 Order matters. HN first, everything else feeds it.
 
@@ -97,7 +113,7 @@ Order matters. HN first, everything else feeds it.
 | 12:00 | r/selfhosted | Privacy / no-cloud angle |
 | 14:00 | r/Obsidian | Integration-shaped question |
 | 16:00 | X | End-of-day recap with day-one numbers |
-| **Wed 10:00** | r/immigration | Day 2 — visa form-fill use case |
+| **Wed Jun 17, 10:00** | r/immigration | Day 2 — visa form-fill use case |
 
 Reply window:
 - HN: every comment within 15 min for first 4h
@@ -106,14 +122,14 @@ Reply window:
 
 ---
 
-## Phase 3 — Sustain (Wed Jul 1 → Tue Jul 14)
+## Phase 3 — Sustain (Wed Jun 17 → Tue Jun 30)
 
-- **Wed Jul 1** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
-- **Thu Jul 3** (skip July 4) — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each
-- **Mon Jul 7** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
-- **Wed Jul 9** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
-- **Fri Jul 11** — Ship the first user-requested feature visibly. Show the loop is tight
-- **Mon Jul 14** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
+- **Wed Jun 17** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
+- **Thu Jun 18** — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each
+- **Mon Jun 22** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
+- **Wed Jun 24** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
+- **Fri Jun 26** — Ship the first user-requested feature visibly. Show the loop is tight
+- **Tue Jun 30** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
 
 ---
 
@@ -133,39 +149,48 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 
 ## Risks + mitigations
 
-1. **Notarization breaks on a fresh Mac** → catch in Phase 0 clean-VM QA (Task #12)
-2. **Ollama install friction kills first-run** → ✅ in-app installer flow shipped. Re-test on clean Mac
+1. **Notarization breaks on a fresh Mac** → catch in tonight's clean-Mac QA pass
+2. **Ollama install friction kills first-run** → ✅ in-app installer flow shipped. Re-test on clean Mac tonight
 3. **HN flames the form-fill as creepy** → "coming soon, opt-in, the graph is the product" canned response in `docs/LAUNCH_COPY.md`
-4. **Someone finds an outbound call** → ✅ chat-history fix removed the biggest one. Re-run Little Snitch + ingest 10 docs before launch
-5. **Dev Mac is MDM'd** → notarize from non-managed Mac on Jun 25 (the eBay-managed Mac blocks Apple's stapler)
+4. **Someone finds an outbound call** → ✅ chat-history fix removed the biggest one. Re-run Little Snitch + ingest 10 docs tonight
+5. **Dev Mac is MDM'd** → notarize from non-managed Mac TODAY (the eBay-managed Mac blocks Apple's stapler)
+6. **T-1 compression — no soft-launch derisking** → see "Pre-launch prerequisites" mitigations. Kill-switch on the Show HN post if same-signature bug reports stack up in first 2h
 
 ---
 
-## Day-of checklist (print this)
+## Day-of checklist (Mon Jun 15 evening + Tue Jun 16 morning)
 
+**Tonight (Mon Jun 15):**
 - [ ] DMG signed + notarized + stapled, downloadable, SHA in the release notes
+- [ ] Clean-Mac QA pass complete; 5 demo questions return cited answers
 - [ ] Landing prerendered, OG unfurl tested on X + Slack + iMessage + WhatsApp
-- [ ] PostHog firing on `download_mac_clicked`, `app_unlocked`, `first_doc_ingested`, `first_answer`
-- [ ] Bug-report endpoint receiving
+- [ ] PostHog firing on `download_mac_clicked`, `pricing_cta_clicked`, `waitlist_signup_completed`, `bug_report_submitted` (the four landing-side events that actually exist)
+- [ ] Bug-report endpoint smoke-curl returns 200 (✅ done — verify still good)
+- [ ] `bug-screenshots` storage bucket exists in Supabase
 - [ ] 60s video on landing page, on YouTube (for embeds), as MP4 attached to PH
 - [ ] HN draft pasted into a notes app, ready to ctrl-V
-- [ ] PH scheduled in the night-before batch
+- [ ] PH scheduled in the night-before batch (deadline: tonight)
 - [ ] X thread drafted in TweetDeck / Typefully, scheduled
 - [ ] LinkedIn drafted
 - [ ] 5 Reddit drafts ready, mod rules re-read for each sub
-- [ ] Calendar blocked 07:00–17:00 PT — no meetings, just replies
+- [ ] Calendar blocked 07:00–17:00 PT Tue — no meetings, just replies
+- [ ] support@octovault.ai DNS propagated (or copy edited to remove the address)
+
+**Tomorrow morning (Tue Jun 16), before 07:30 PT:**
+- [ ] Open the HN draft, PH page, X scheduler, LinkedIn, 4 Reddit tabs
+- [ ] Open Supabase → waitlist + bug_reports tables
+- [ ] Open PostHog → realtime events dashboard
+- [ ] Open the landing site in incognito; do one cold download yourself to verify the funnel fires
 
 ---
 
-## Next engineering blockers (in order)
+## Next engineering blockers
 
-Open tasks I can ship without user intervention:
+All shipped — Phase 0 engineering items are done. Remaining work is
+operational: notarize, clean-Mac QA, DNS, dashboard checks.
 
-1. **#11 Pro waitlist verification + wire** — drives the launch funnel; dead buttons here = day-1 reservation target dies
-2. **#13 PostHog funnel audit** — so day-1 you can actually see where users drop off
-3. **#10 Bug-report endpoint verify** — so day-1 bug reports reach the user instead of vanishing
-4. **#14 Telemetry reassurance panel** — privacy-story polish
-5. **#6 Phase E2 vision fallback** for form detection — non-blocking; defer to post-launch unless time permits
+Post-launch backlog (don't start before Jun 16):
+- **Phase E2 vision fallback** for form detection — non-blocking; queue for the Fri Jun 26 "first user-requested feature" slot if it matches feedback
 
 User-side items I can't do but need before launch:
 - 60-sec hero video (film + edit)
