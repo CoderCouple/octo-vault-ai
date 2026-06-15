@@ -3,7 +3,9 @@
 Target: **Tue 2026-06-30, 07:30 PT** (Show HN). Tuesday/Wednesday have
 the best HN+PH attention; avoids US July 4 chop.
 
-Last updated: 2026-06-15 (T-15).
+Last updated: 2026-06-15 (T-15) — after the Phase 0 product sweep
+(telemetry panel, waitlist tier intent, PostHog funnel audit, bug-report
+schema fix).
 
 Companion: `docs/LAUNCH_COPY.md` — every public-facing post in
 posting order, ready to ctrl-V on launch day.
@@ -17,13 +19,13 @@ posting order, ready to ctrl-V on launch day.
 ### Product
 
 - [x] Hero prerender (vite-prerender-plugin) — shipped
-- [ ] First-run flow on a clean Mac — VM or fresh account. Time to first answer < 90s. **Needs user QA.**
+- [x] First-run flow on a clean Mac — QA'd by user (time-to-first-answer < 90s)
 - [x] Ollama not installed flow with eager probe + Install CTA — shipped
 - [x] In-app `ollama pull` with progress bar — shipped
 - [x] DMG download tracking → PostHog (`download_mac_clicked`) — already wired
-- [ ] Telemetry reassurance panel in Settings — no toggle needed; verified nothing in product runtime sends telemetry. Add an explicit "Crash reports & telemetry: never collected" panel as the privacy-story receipt
+- [x] Telemetry reassurance panel in Settings — shipped (`3dfc187`). No toggle: verified nothing in product runtime sends telemetry. Panel is the privacy-story receipt
 - [x] Chat history moved to SQLCipher (was plaintext in localStorage — launch blocker) — shipped
-- [x] Ollama URL false-positive: cfg passthrough + server-side validation — shipped (needs user re-test with a wrong port to confirm "Not reachable" now)
+- [x] Ollama URL false-positive — re-tested by user, wrong port now reports "Not reachable"
 
 ### Assets (user-side)
 
@@ -32,7 +34,7 @@ posting order, ready to ctrl-V on launch day.
 - [ ] **Network-tab screenshot** — DevTools open, hero loaded, 0 outbound calls after launch. *The proof for the privacy claim*
 - [x] OG image — shipped
 - [ ] 3 still screenshots: graph view, chat with citations, conflict resolution. PNG, 2880×1800 retina
-- [x] Chrome Web Store assets in repo (marquee, 2 screenshots, small promo) — needs submission
+- [x] Chrome Web Store — submitted (assets: marquee, 2 screenshots, small promo)
 
 ### Copy (in `docs/LAUNCH_COPY.md`)
 
@@ -46,10 +48,18 @@ posting order, ready to ctrl-V on launch day.
 
 ### Inbound infra
 
-- [ ] Bug-report endpoint live — code exists, **needs end-to-end verify** that submissions reach the user (Task #10)
+- [ ] **Bug-report endpoint — LAUNCH BLOCKER.** Verification on 2026-06-15 showed `public.bug_reports` does not exist on the live Supabase (`HTTP 404 PGRST205`). Every submission since `/bug-report` shipped has 4xx'd into the form's error state. Migration `supabase/migrations/20260615180000_create_bug_reports.sql` is staged locally; `supabase db push --linked --dry-run` confirms it's the only pending change. **Action: run `supabase db push --linked` (or paste the SQL into the Supabase dashboard), then re-run the smoke curl:**
+  ```sh
+  curl -sS -o /dev/null -w "%{http_code}\n" \
+    "$VITE_SUPABASE_URL/rest/v1/bug_reports?select=id&limit=0" \
+    -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+    -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY"
+  # expect: 200
+  ```
+  Also verify `bug-screenshots` storage bucket exists in the Supabase dashboard (Storage → buckets); `uploadScreenshots()` writes there.
 - [ ] support@octovault.ai forwarding — user DNS
-- [ ] PostHog funnel events: landing → download_mac_clicked → app_first_unlock → first_doc_ingested → first_answer. **First wired; rest need audit** (Task #13)
-- [ ] Pro waitlist CTAs: "Reserve the $9 price" + lifetime "Reserve a seat" — **need to verify clicks persist somewhere** (Task #11)
+- [x] PostHog funnel events audited — landing-side only by design (no desktop telemetry, per the privacy panel). Measurable funnel: landing visit → `download_mac_clicked` → GitHub release counter → `pricing_cta_clicked` → `waitlist_signup_completed` → `bug_report_submitted`. Nav + footer GitHub clicks now named events
+- [x] Pro waitlist CTAs — `cta-pricing-reserve-{pro,lifetime}` tracked + tier intent carried via sessionStorage into `waitlist_signup_completed` event and the Supabase `source` column. Day-one query: `select source, count(*) from waitlist group by source`
 
 ---
 
