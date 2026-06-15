@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Lock, Monitor, Moon, ShieldCheck, Sun, WifiOff } from "lucide-react";
 import { listModels, type OllamaConfig } from "@octovault/core";
 import { useAppContext } from "../context";
 import { useTheme } from "../components/theme";
@@ -225,11 +225,48 @@ export function SettingsView() {
 
       <Separator />
 
-      <Card className="p-3 text-xs leading-relaxed text-muted-foreground">
-        OctoVault never sends your documents or extracted data to any server. All AI runs
-        on your device via Ollama at {settings.ollamaUrl}. Verify with your OS firewall or
-        Activity Monitor — outbound connections should only be to localhost.
-      </Card>
+      <Section title="Privacy">
+        <Card className="space-y-3 p-3.5">
+          <div className="flex items-start gap-2.5">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-0.5">
+              <div className="text-[13px] font-medium">Crash reports &amp; telemetry: never collected</div>
+              <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                There is no opt-in toggle because there's no opt-in. The
+                desktop app and Chrome extension ship with zero analytics,
+                zero crash reporters, zero "phone-home" of any kind. Nothing
+                to enable later.
+              </p>
+            </div>
+          </div>
+
+          <ul className="space-y-1.5 pl-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                Documents, extracted facts, and chat history are encrypted with
+                your master password (SQLCipher on desktop, WebCrypto +
+                IndexedDB in the extension).
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <WifiOff className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                The only outbound connection in normal operation is to your
+                local Ollama server at <code className="font-mono">{settings.ollamaUrl}</code>.
+                Verify with Little Snitch, Activity Monitor, or
+                <code className="ml-1 font-mono">lsof -i -P -n | grep OctoVault</code>.
+              </span>
+            </li>
+          </ul>
+
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            The landing page (octovault.ai) uses PostHog for anonymous click
+            events &mdash; that's a separate site from this app and never
+            sees document content.
+          </p>
+        </Card>
+      </Section>
 
       <AlertDialog open={showClearProfile} onOpenChange={setShowClearProfile}>
         <AlertDialogContent>
