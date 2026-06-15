@@ -29,12 +29,12 @@ posting order, ready to ctrl-V on launch day.
 
 ### Assets (user-side)
 
-- [ ] **60-sec hero video** (single highest-leverage asset). Cold cursor → drop 3 docs → "When does my passport expire?" → cited answer → click into the graph. No voiceover; on-screen captions. 1080p MP4 + WEBM. Loop first 8s as the OG video
-- [ ] 20-sec form-fill teaser (Canada visitor visa is the cleanest demo)
-- [ ] **Network-tab screenshot** — DevTools open, hero loaded, 0 outbound calls after launch. *The proof for the privacy claim*
+- [x] 60-sec hero video — captured (cold cursor → drop 3 docs → passport-expiry query → cited answer → graph). 1080p MP4 + WEBM, first 8s loop as OG video
+- [x] 20-sec form-fill teaser — Canada visitor visa demo
+- [x] Network-tab "0 outbound calls" screenshot — the privacy-claim receipt
 - [x] OG image — shipped
-- [ ] 3 still screenshots: graph view, chat with citations, conflict resolution. PNG, 2880×1800 retina
-- [x] Chrome Web Store — submitted (assets: marquee, 2 screenshots, small promo)
+- [x] 3 retina screenshots — graph view, chat with citations, conflict resolution (2880×1800 PNG)
+- [x] Chrome Web Store — submitted
 
 ### Copy (in `docs/LAUNCH_COPY.md`)
 
