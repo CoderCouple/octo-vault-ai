@@ -2858,6 +2858,16 @@ function PricingCard({ t }: { t: PricingTier }) {
       ) : (
         <a
           href={t.ctaHref}
+          data-attr={`cta-pricing-reserve-${t.id}`}
+          onClick={() => {
+            // Carry the tier intent into the waitlist form so the
+            // resulting Supabase row + PostHog event can split day-one
+            // Pro reservations from Lifetime reservations from generic
+            // waitlist signups. sessionStorage (not query string) so
+            // the URL stays clean and shareable.
+            try { sessionStorage.setItem("octovault.waitlist.intent", t.id); } catch { /* ignore */ }
+            track("pricing_cta_clicked", { tier: t.id, price: t.price });
+          }}
           className={`mt-6 inline-flex h-10 w-full items-center justify-center rounded-md text-[13px] font-semibold transition-colors ${
             t.highlight
               ? "bg-foreground text-background hover:bg-foreground/90"
@@ -2933,10 +2943,20 @@ function Cta() {
     if (!clean.includes("@")) return;
     setPending(true);
 
+    // Tier intent set by the Pricing card the user came from (pro /
+    // lifetime). Generic waitlist clicks leave it empty. One-shot:
+    // read + clear so it doesn't bleed into a later signup.
+    let intent: string | null = null;
+    try {
+      intent = sessionStorage.getItem("octovault.waitlist.intent");
+      sessionStorage.removeItem("octovault.waitlist.intent");
+    } catch { /* ignore */ }
+    const source = intent ? `pricing_${intent}` : "landing";
+
     // Always stash locally as belt-and-suspenders backup.
     try {
-      const list = JSON.parse(localStorage.getItem(WAITLIST_STORAGE) ?? "[]") as Array<{ email: string; at: number }>;
-      if (!list.some((x) => x.email === clean)) list.push({ email: clean, at: Date.now() });
+      const list = JSON.parse(localStorage.getItem(WAITLIST_STORAGE) ?? "[]") as Array<{ email: string; at: number; intent?: string }>;
+      if (!list.some((x) => x.email === clean)) list.push({ email: clean, at: Date.now(), intent: intent ?? undefined });
       localStorage.setItem(WAITLIST_STORAGE, JSON.stringify(list));
     } catch { /* ignore */ }
 
@@ -2952,7 +2972,7 @@ function Cta() {
             "Content-Type": "application/json",
             Prefer: "return=minimal",
           },
-          body: JSON.stringify({ email: clean, source: "landing" }),
+          body: JSON.stringify({ email: clean, source }),
         }).then((r) => r.ok || r.status === 409).catch(() => false)
       : Promise.resolve(false);
 
@@ -2962,8 +2982,12 @@ function Cta() {
       // Stitch this anonymous session to the email so we can see what they
       // looked at before signing up — the only signal we have for which
       // section converted them. PostHog uses the email as distinct_id.
-      identify(clean, { source: "landing_waitlist" });
-      track("waitlist_signup_completed", { delivered: ok, destination: ok ? "supabase" : "fallback" });
+      identify(clean, { source: "landing_waitlist", intent: intent ?? "generic" });
+      track("waitlist_signup_completed", {
+        delivered: ok,
+        destination: ok ? "supabase" : "fallback",
+        intent: intent ?? "generic",
+      });
     });
   }
 
