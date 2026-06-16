@@ -1,7 +1,7 @@
 # OctoVault — launch copy
 
 Single source of truth for every public-facing post on launch day.
-Target: **Tue 2026-06-30, 07:30 PT (Show HN first)**. Edit in place,
+Target: **Tue 2026-06-16, 07:30 PT (Show HN first)**. Edit in place,
 ship from here. Order in this doc = posting order on launch day.
 
 ---
@@ -188,7 +188,7 @@ GIFs (15s each). Keep replies open for 4h.
 
 **T8 — CTA**
 
-> Mac DMG, signed + notarised, 47 MB.
+> Mac DMG, signed + notarised. ~115 MB Apple Silicon, ~120 MB Intel.
 > Open-source extraction + retrieval coming after the schema stabilises.
 >
 > octovault.ai
@@ -256,8 +256,8 @@ Mac-craft notes that this sub might care about:
   • SQLCipher for the vault, key derived from your master password.
   • Apple Silicon native; Intel works but ANE acceleration only
     kicks in on M-series.
-  • 47 MB DMG. No web view for the chat surface — actual native
-    React + Electron renderer.
+  • ~115 MB DMG (Apple Silicon; 120 MB Intel). No web view for the
+    chat surface — actual native React + Electron renderer.
 
 Stack: Electron + React + Tailwind on the front, Ollama (qwen3:8b
 + nomic-embed-text) underneath. Free for personal use.
@@ -454,7 +454,7 @@ feedback}. Thanks to everyone who tried it.
 
 ---
 
-## 8. Newsletter outreach (Thu Jul 3)
+## 8. Newsletter outreach (Thu Jun 18)
 
 Targets: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo,
 Sidebar (design), Hacker Newsletter (HN top-of-week curator).
