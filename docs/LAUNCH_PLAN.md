@@ -108,17 +108,36 @@ Order matters. HN first, everything else feeds it.
 | 07:45 | Product Hunt | Maker comment goes live (scheduled in night-before batch) |
 | 08:00 | X thread | 8 tweets, video in T1 |
 | 09:00 | LinkedIn | Different audience, personal tone |
-| 10:00 | r/macapps | Mac craft angle |
-| 11:00 | r/LocalLLaMA | Technical / retrieval / qwen3 angle |
-| 12:00 | r/selfhosted | Privacy / no-cloud angle |
-| 14:00 | r/Obsidian | Integration-shaped question |
+| 10:00 | r/macapps | Mac craft angle · your account |
 | 16:00 | X | End-of-day recap with day-one numbers |
-| **Wed Jun 24, 10:00** | r/immigration | Day 2 — visa form-fill use case |
+
+**Reddit cadence (staggered, not blasted):** 5 promo posts in one day
+from a single account is Reddit's textbook spam signature. Spreading
+over 7+ days, splitting across accounts, and starting with the lowest-
+risk subs keeps the launch out of the shadowban tarpit.
+
+| Date | Sub | Posted from | Why this slot |
+|---|---|---|---|
+| Tue Jun 23 (launch day) | r/macapps | your account | Lowest risk, highest Mac-audience relevance |
+| Wed Jun 24 | r/LocalLLaMA | your account | Technical-build framing; LocalLLaMA tolerates self-promo if substance is there |
+| Fri Jun 26 | r/selfhosted | Payal's account | Strict "must be self-hostable" rule — Mac-only is gray; distributing across accounts reduces spam-classifier weight |
+| Mon Jun 29 | r/Obsidian | Payal's account | New-account filter is harsh; ask-a-question framing helps |
+| Wed Jul 1 | r/immigration | aged account; ModMail first | Strictest of the five; mod-DM before posting (template below) |
+
+**ModMail template for r/immigration (send Sat Jun 27, post Wed Jul 1):**
+> Hi mods — I built a free Mac tool that helps immigrants keep visa /
+> I-797 / DS-160 docs queryable offline. Would a post about it be a
+> fit for the sub, or against rules? Happy to follow whatever
+> guidelines you set; would rather ask first than have it removed.
 
 Reply window:
 - HN: every comment within 15 min for first 4h
 - PH: every comment within 30 min
+- Reddit: reply within 30 min on the first 5 comments of each post —
+  early-engagement drives algorithmic visibility hard
 - PostHog dashboard hourly. Tweet/DM something to address the drop-off step
+- **Shadowban check:** open each Reddit post in incognito 30 min after
+  posting; if you see it = fine, if you see "deleted" = shadowbanned
 
 ---
 

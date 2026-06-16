@@ -301,12 +301,14 @@ outbound links in the body.)
 
 ---
 
-## 5. Reddit (10:00 PT onwards, staggered)
+## 5. Reddit (staggered over 7+ days — see LAUNCH_PLAN cadence)
 
-Each sub gets its own post. Never the same body. Mods will hammer
-you for cross-posting verbatim.
+Each sub gets its own post + its own UTM-tagged URL so PostHog can
+attribute traffic per-sub. Different bodies + different URLs reduces
+Reddit's duplicate-detection weighting. **Don't post 5 in one day**
+— that's the spam signature that gets accounts shadowbanned.
 
-### r/macapps (10:00 PT)
+### r/macapps · Tue Jun 23 10:00 PT (your account)
 
 **Title:** We built a Mac-native local AI vault for personal documents (signed + notarised)
 
@@ -330,11 +332,11 @@ Mac-craft notes that this sub might care about:
 Stack: Electron + React + Tailwind on the front, Ollama (qwen3:8b
 + nomic-embed-text) underneath. Free for personal use.
 
-octovault.ai — feedback welcome, especially on the first-run flow
-if you don't have Ollama installed yet.
+octovault.ai/?utm_source=reddit_macapps — feedback welcome, especially
+on the first-run flow if you don't have Ollama installed yet.
 ```
 
-### r/LocalLLaMA (11:00 PT)
+### r/LocalLLaMA · Wed Jun 24 11:00 PT (your account)
 
 **Title:** Built a consumer Mac app on qwen3:8b — retrieval notes, TTFT, what worked
 
@@ -370,12 +372,12 @@ Extraction
   • Per-type extraction hints — passport prompt is different from
     paystub prompt is different from lease prompt.
 
-App is octovault.ai if anyone wants to poke at it. Free, Mac only
-right now. Happy to answer retrieval / prompt-eng questions in the
-thread.
+App is octovault.ai/?utm_source=reddit_localllama if anyone wants to
+poke at it. Free, Mac only right now. Happy to answer retrieval /
+prompt-eng questions in the thread.
 ```
 
-### r/selfhosted (12:00 PT)
+### r/selfhosted · Fri Jun 26 (Payal's account)
 
 **Title:** Local-first alternative to NotebookLM — runs entirely on your machine
 
@@ -399,11 +401,12 @@ What's self-hosted about it:
 Catch: Mac only for now (Electron + signed DMG). Linux and Windows
 are on the roadmap once the macOS build is steady.
 
-Free for personal use. octovault.ai — would love feedback from
-people who've used Paperless-ngx or similar for the comparison angle.
+Free for personal use. octovault.ai/?utm_source=reddit_selfhosted —
+would love feedback from people who've used Paperless-ngx or similar
+for the comparison angle.
 ```
 
-### r/Obsidian (Tue 14:00 PT)
+### r/Obsidian · Mon Jun 29 (Payal's account)
 
 **Title:** Built a local AI app for personal documents — how would Obsidian users want this to integrate?
 
@@ -428,11 +431,12 @@ I lean (c) for v1 because the threat models are different — Obsidian
 trusts your vault folder, OctoVault encrypts it. But (a) is the most
 asked-for thing I've heard from people who've seen it.
 
-App is octovault.ai if curious. Free for personal use, Mac only.
-Genuinely asking — what would the integration look like for you?
+App is octovault.ai/?utm_source=reddit_obsidian if curious. Free for
+personal use, Mac only. Genuinely asking — what would the integration
+look like for you?
 ```
 
-### r/immigration (Wed 10:00 PT)
+### r/immigration · Wed Jul 1 (aged account · ModMail first)
 
 **Title:** Free Mac tool that keeps your I-797 / visa documents queryable and (soon) auto-fills the forms
 
@@ -457,10 +461,13 @@ It's free for personal use. Mac only right now. The encryption is
 SQLCipher with a key from your password — meaning if you lose your
 password the vault is gone. That's by design.
 
-Not legal advice, just paperwork ergonomics. octovault.ai.
+Not legal advice, just paperwork ergonomics.
+octovault.ai/?utm_source=reddit_immigration.
 
 (Mods — happy to take this down if it's too promotional; we're a
-two-person team and this is the exact use case we built it for.)
+two-person team and this is the exact use case we built it for.
+ModMail'd ahead of time about whether this post was a fit for the
+sub.)
 ```
 
 ---
