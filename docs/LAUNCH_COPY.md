@@ -19,14 +19,15 @@ OctoVault is a Mac app that turns your personal documents — passports,
 leases, paystubs, I-797s, marriage certs — into a local knowledge graph
 you can chat with. The model and the data both stay on disk.
 
-I built it because I had a folder called important_docs/ with 84 PDFs
-and could never find the I-94 expiry on my wife's record. NotebookLM
-solves that by uploading everything to Google. ChatGPT solves it by
-uploading to OpenAI. Obsidian doesn't act on documents at all. The
-third option felt missing, so OctoVault keeps everything on disk and
-runs Ollama (qwen3:8b for chat, nomic-embed-text for retrieval) locally.
+My cofounder Payal and I built it because I had a folder called
+important_docs/ with 84 PDFs and could never find the I-94 expiry on
+my wife's record. NotebookLM solves that by uploading everything to
+Google. ChatGPT solves it by uploading to OpenAI. Obsidian doesn't
+act on documents at all. The third option felt missing, so OctoVault
+keeps everything on disk and runs Ollama (qwen3:8b for chat,
+nomic-embed-text for retrieval) locally.
 
-Three things I'd love feedback on:
+Three things we'd love feedback on:
 
   1. The knowledge graph is the actual product — every fact is a node
      linked to the source page. Chat is just a query surface on top.
@@ -90,16 +91,17 @@ Post this as the very first comment under your own launch — PH
 weights early maker engagement heavily.
 
 ```
-Sunil here, solo maker.
+Sunil here, posting on behalf of myself and my cofounder Payal — we
+built OctoVault as a two-person team.
 
-I built OctoVault because I have a folder called `important_docs/` with
-84 PDFs in it — passports, my wife's I-797, lease, paystubs, kids' birth
-certificates — and every time someone asks me "when does that visa
-expire?" I dig through it for ten minutes.
+The use case started personal: I have a folder called `important_docs/`
+with 84 PDFs in it — passports, my wife's I-797, our lease, paystubs,
+the kids' birth certificates — and every time someone asked me "when
+does that visa expire?" I lost ten minutes digging through it.
 
 NotebookLM solves this by uploading everything to Google. ChatGPT by
 uploading to OpenAI. For these documents specifically, that always felt
-wrong. So I built the third option.
+wrong. So Payal and I built the third option.
 
 OctoVault is a Mac app that runs the AI locally (Ollama, qwen3:8b +
 nomic-embed-text), extracts facts from each document, and links them in
@@ -126,7 +128,7 @@ Mac DMG, signed + notarised: https://octovault.ai
 Bug reports & requests: support@octovault.ai (forwards directly to me).
 
 What's the most annoying piece of paperwork in your life right now?
-I'll reply with exactly what OctoVault would do with it.
+We'll reply with exactly what OctoVault would do with it.
 ```
 
 **Optional add — PH-exclusive offer (insert before the "Mac DMG" line):**
@@ -189,8 +191,8 @@ GIFs (15s each). Keep replies open for 4h.
 > ChatGPT uploads them to OpenAI.
 > Obsidian doesn't act on them at all.
 >
-> I built the third option. OctoVault — a local AI vault for your
-> personal paperwork. Mac, free, signed.
+> My cofounder Payal and I built the third option. OctoVault — a
+> local AI vault for your personal paperwork. Mac, free, signed.
 >
 > [video — 60s hero]
 
@@ -267,7 +269,8 @@ GIFs (15s each). Keep replies open for 4h.
 Different audience, different tone — personal, not technical.
 
 ```
-I built a Mac app to solve a problem that's been bugging me for years.
+My cofounder Payal and I built a Mac app to solve a problem that's
+been bugging me for years.
 
 I have a folder called "important_docs/" with 84 PDFs in it. Passports,
 my wife's I-797, our lease, paystubs, school letters, marriage
@@ -277,10 +280,10 @@ certificate, kids' birth certificates. Every time someone asks me
 NotebookLM and ChatGPT solve this — by uploading everything to
 Google or OpenAI. That felt wrong for documents like these.
 
-So I built OctoVault. It runs the AI locally (Ollama under the hood),
-extracts the facts from each document, and links them in a knowledge
-graph so I can ask "when does Aria's I-94 expire?" and get a cited
-answer without anything leaving my laptop.
+So Payal and I built OctoVault. It runs the AI locally (Ollama under
+the hood), extracts the facts from each document, and links them in a
+knowledge graph so I can ask "when does Aria's I-94 expire?" and get
+a cited answer without anything leaving my laptop.
 
 A Chrome side panel that fills visa forms from the same graph is in
 private beta. That part is the use case I really care about — I've
@@ -305,7 +308,7 @@ you for cross-posting verbatim.
 
 ### r/macapps (10:00 PT)
 
-**Title:** I built a Mac-native local AI vault for personal documents (signed + notarised)
+**Title:** We built a Mac-native local AI vault for personal documents (signed + notarised)
 
 ```
 TL;DR: Drop in passports, leases, paystubs, I-797s. OctoVault extracts
@@ -435,8 +438,8 @@ Genuinely asking — what would the integration look like for you?
 
 ```
 I've filled the same DS-160 / I-130 / school-enrolment information
-across four different family applications and got tired of it. Built
-a Mac app that:
+across four different family applications and got tired of it, so my
+cofounder Payal and I built a Mac app that:
 
   • Stores all your immigration documents encrypted on your machine
     (no cloud upload — important for these specifically).
@@ -456,8 +459,8 @@ password the vault is gone. That's by design.
 
 Not legal advice, just paperwork ergonomics. octovault.ai.
 
-(Mods — happy to take this down if it's too promotional; I'm a
-single-person shop and this is the use case I built it for.)
+(Mods — happy to take this down if it's too promotional; we're a
+two-person team and this is the exact use case we built it for.)
 ```
 
 ---
