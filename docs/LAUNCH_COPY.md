@@ -86,30 +86,95 @@ https://octovault.ai
 
 **Maker comment (first comment, post at 00:05 PT):**
 
+Post this as the very first comment under your own launch — PH
+weights early maker engagement heavily.
+
 ```
-Hi PH — Sunil here, solo maker.
+Sunil here, solo maker.
 
-OctoVault is the local-first answer to "I have a folder full of important
-PDFs and can never find anything." It extracts facts from your documents,
-builds a knowledge graph with source citations, and lets you chat with it.
+I built OctoVault because I have a folder called `important_docs/` with
+84 PDFs in it — passports, my wife's I-797, lease, paystubs, kids' birth
+certificates — and every time someone asks me "when does that visa
+expire?" I dig through it for ten minutes.
 
-The thing that makes it different: nothing leaves your machine. The AI
-runs locally via Ollama (qwen3:8b + nomic-embed-text). The vault is
-SQLCipher-encrypted with a key derived from your master password. The
-landing page shows a network-tab screenshot proving 0 outbound calls —
-that's the spec.
+NotebookLM solves this by uploading everything to Google. ChatGPT by
+uploading to OpenAI. For these documents specifically, that always felt
+wrong. So I built the third option.
 
-What I'd love feedback on:
-  • Onboarding — first-run has to install Ollama if it's not there.
-    Is the current flow tolerable?
-  • The graph view — is it the killer feature, or is plain chat enough?
-  • The Chrome side panel that fills forms — useful, or scary?
+OctoVault is a Mac app that runs the AI locally (Ollama, qwen3:8b +
+nomic-embed-text), extracts facts from each document, and links them in
+a knowledge graph you can chat with. The vault is SQLCipher-encrypted
+with a key derived from your password. Zero outbound calls in product
+runtime — the landing page has a DevTools screenshot to prove it.
 
-Free for personal use. Pro is $9/mo (reserved, ships later this summer).
-Lifetime $499 — capped at 200 founding members.
+A few things I'd love PH's read on:
+
+  1. The graph view vs plain chat — is the graph the actual killer
+     feature, or does Q&A alone do the job for 90% of cases?
+
+  2. A Chrome side panel that auto-fills DS-160 / I-130 / school forms
+     from the same vault is in private beta. Useful, or creepy?
+
+  3. First-run installs Ollama for you if you don't have it (~5GB
+     for the two models). Tolerable, or where does it break?
+
+Free for personal use. Pro $9/mo — reserve at launch and the price
+locks for life. Lifetime $499, capped at 200 seats (honest counter on
+the page).
 
 Mac DMG, signed + notarised: https://octovault.ai
+Bug reports & requests: support@octovault.ai (forwards directly to me).
+
+What's the most annoying piece of paperwork in your life right now?
+I'll reply with exactly what OctoVault would do with it.
 ```
+
+**Optional add — PH-exclusive offer (insert before the "Mac DMG" line):**
+
+If you decide to do the PH-exclusive offer recommended by the
+pre-launch checklist, swap the pricing paragraph for this one:
+
+```
+Free for personal use. Pro $9/mo — reserve at launch and the price
+locks for life. Lifetime $499 publicly, but **the first 30 PH commenters
+on this launch get a Lifetime seat at $99 — reply "PH" anywhere in
+your comment and I'll DM you the reserve link.**
+```
+
+This is the single most-asymmetric thing you can do for first-hour
+engagement on PH. Costs you at most $12k of theoretical revenue
+(30 × $400), buys you 30 guaranteed substantive comments and a
+shareable hook for the launch thread on X.
+
+**Reply hooks — keep these in a notes app, paste-and-personalise:**
+
+> *"Does it work on Windows / Linux?"* — Not yet. Mac first because
+> the signing + notarisation + native menu work was the bulk of the
+> shell. Linux is next (the Electron + Ollama bits are portable; the
+> SQLCipher native module needs a per-platform build). ETA: end of
+> summer based on early feedback.
+
+> *"How do I trust nothing leaves my machine?"* — Two ways: (1) Little
+> Snitch / lsof while you ingest 20 docs and ask 10 questions — there
+> are no outbound connections to anything but your local Ollama on
+> 127.0.0.1; (2) the source for the extraction + retrieval core is
+> opening once the schema stabilises, so you'll be able to verify it
+> yourself.
+
+> *"What happens if I lose my master password?"* — The vault is gone.
+> That's by design — there's no recovery channel that doesn't break
+> the threat model. Export your facts as JSON regularly if that worries
+> you (Settings → Export).
+
+> *"Why not local-LLM-X instead of qwen3?"* — qwen3:8b is the default;
+> Settings → Models lets you swap to any Ollama tag (llama3.2:3b for
+> speed, mistral:7b for English fluency, qwen2.5:14b if you have the
+> RAM). The retrieval layer doesn't care which model answers.
+
+> *"Is the form-fill a keylogger?"* — No. The content script reads the
+> form schema (DOM, not keystrokes), asks the local vault for matches,
+> and previews drafts in a HUD before anything fills. You click to
+> commit each field. Nothing leaves the device.
 
 ---
 
