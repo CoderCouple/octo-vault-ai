@@ -71,10 +71,14 @@ remaining gate between "Phase 0 done" and "Show HN goes live":
       without Gatekeeper drama; Ollama install flow works end-to-end;
       sample passport + I-797 produce correct facts; the 5 demo
       questions in `LAUNCH_COPY.md` return cited answers.
-- [ ] **support@octovault.ai DNS forwarding** wired. DNS can take 1-4h
-      to propagate — do it now. If it can't land before 07:30 PT,
-      strip the `support@` line from launch copy and use a personal
-      email instead; don't ship a dead address.
+- [ ] **support@octovault.ai forwarding rule** in Namecheap. DNS
+      infrastructure is already live (MX → eforward[1-5].registrar-servers.com,
+      SPF → spf.efwd.registrar-servers.com) — only the per-address
+      mapping is missing. Namecheap dashboard → Domain List →
+      octovault.ai → Manage → Advanced DNS → Mailbox/Email Forwarding
+      → add `support` → personal email. Verify by sending a test email
+      from your phone; arrival in < 2 min = done. No DNS propagation
+      wait because the records are already in place.
 - [x] **`bug-screenshots` storage bucket** created via migration
       `20260615200000_create_bug_screenshots_bucket.sql` and verified
       end-to-end: anon upload → 200, public read → 200. Cleanup: a
