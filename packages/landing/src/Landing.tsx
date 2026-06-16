@@ -75,7 +75,31 @@ function Nav() {
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <a
+            href="https://www.producthunt.com/products/octovaultai?utm_source=badge-follow&utm_medium=badge&utm_campaign=badge-octovaultai"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => track("ph_badge_clicked", { placement: "nav", kind: "follow" })}
+            data-attr="ph-badge-nav-follow"
+            aria-label="Follow OctoVaultAI on Product Hunt"
+            className="hidden sm:inline-flex"
+          >
+            <img
+              src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=light&size=small"
+              alt="Follow OctoVaultAI on Product Hunt"
+              width={86}
+              height={32}
+              className="block dark:hidden"
+            />
+            <img
+              src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=dark&size=small"
+              alt="Follow OctoVaultAI on Product Hunt"
+              width={86}
+              height={32}
+              className="hidden dark:block"
+            />
+          </a>
           <a
             href="#waitlist"
             data-attr="cta-nav-waitlist"
