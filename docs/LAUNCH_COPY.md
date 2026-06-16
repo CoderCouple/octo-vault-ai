@@ -1,7 +1,7 @@
 # OctoVault — launch copy
 
 Single source of truth for every public-facing post on launch day.
-Target: **Tue 2026-06-16, 07:30 PT (Show HN first)**. Edit in place,
+Target: **Tue 2026-06-23, 07:30 PT (Show HN first)**. Edit in place,
 ship from here. Order in this doc = posting order on launch day.
 
 ---

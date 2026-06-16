@@ -1,12 +1,13 @@
 # OctoVault launch plan
 
-Target: **Tue 2026-06-16, 07:30 PT** (Show HN). Tuesday is the right
-HN-attention slot, and the user moved the date forward 14 days after
-finishing the Phase 0 sweep early.
+Target: **Tue 2026-06-23, 07:30 PT** (Show HN). PH submission +
+Typefully X-thread are both pre-scheduled for that morning, which
+sets the date.
 
-Last updated: 2026-06-15 (T-1) — Phase 0 product/assets/copy all done.
-Launch is tomorrow. Everything in "Pre-launch prerequisites" below
-must land **today**.
+Last updated: 2026-06-16 (T-7) — Phase 0 is fully done, both inbound
+infra and assets are shipped. The week between now and launch goes
+to soft-launch derisking, notarization, and clean-Mac QA — the items
+that get done badly when compressed into T-1.
 
 Companion: `docs/LAUNCH_COPY.md` — every public-facing post in
 posting order, ready to ctrl-V on launch day.
@@ -56,10 +57,10 @@ posting order, ready to ctrl-V on launch day.
 
 ---
 
-## Pre-launch prerequisites (must land TODAY — 2026-06-15)
+## Pre-launch prerequisites (Mon Jun 16 → Mon Jun 22)
 
-Launch is tomorrow morning, 07:30 PT. These four items are the
-remaining gate between "Phase 0 done" and "Show HN goes live":
+Launch is Tue Jun 23 07:30 PT. Items below are the remaining gate.
+Order is by cost-of-miss, not by date:
 
 - [ ] **Notarize the DMG from the non-MDM Mac.** The eBay-managed dev
       Mac will intercept Apple's stapler — must be done from a
@@ -97,7 +98,7 @@ Mitigations:
 
 ---
 
-## Phase 2 — Launch day (Tue Jun 16)
+## Phase 2 — Launch day (Tue Jun 23)
 
 Order matters. HN first, everything else feeds it.
 
@@ -112,7 +113,7 @@ Order matters. HN first, everything else feeds it.
 | 12:00 | r/selfhosted | Privacy / no-cloud angle |
 | 14:00 | r/Obsidian | Integration-shaped question |
 | 16:00 | X | End-of-day recap with day-one numbers |
-| **Wed Jun 17, 10:00** | r/immigration | Day 2 — visa form-fill use case |
+| **Wed Jun 24, 10:00** | r/immigration | Day 2 — visa form-fill use case |
 
 Reply window:
 - HN: every comment within 15 min for first 4h
@@ -121,14 +122,14 @@ Reply window:
 
 ---
 
-## Phase 3 — Sustain (Wed Jun 17 → Tue Jun 30)
+## Phase 3 — Sustain (Wed Jun 24 → Tue Jul 7)
 
-- **Wed Jun 17** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
-- **Thu Jun 18** — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each
-- **Mon Jun 22** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
-- **Wed Jun 24** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
-- **Fri Jun 26** — Ship the first user-requested feature visibly. Show the loop is tight
-- **Tue Jun 30** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
+- **Wed Jun 24** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
+- **Thu Jun 25** — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each
+- **Mon Jun 29** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
+- **Wed Jul 1** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
+- **Fri Jul 3** — Ship the first user-requested feature visibly. Show the loop is tight
+- **Tue Jul 7** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
 
 ---
 
@@ -157,9 +158,9 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 
 ---
 
-## Day-of checklist (Mon Jun 15 evening + Tue Jun 16 morning)
+## Day-of checklist (Mon Jun 22 evening + Tue Jun 23 morning)
 
-**Tonight (Mon Jun 15):**
+**Mon Jun 22 evening:**
 - [ ] DMG signed + notarized + stapled, downloadable, SHA in the release notes
 - [ ] Clean-Mac QA pass complete; 5 demo questions return cited answers
 - [x] Landing prerendered, OG unfurl verified against 7 scrapers (Twitter / Slack / Facebook / LinkedIn / Discord / WhatsApp / Safari) — all see identical og:image, og:title, og:description; og-image.png returns 200, real pixels 1200×630 match declared
@@ -175,7 +176,7 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 - [ ] Calendar blocked 07:00–17:00 PT Tue — no meetings, just replies
 - [x] support@octovault.ai forwarder verified (no DNS change needed; MX already live)
 
-**Tomorrow morning (Tue Jun 16), before 07:30 PT:**
+**Tue Jun 23 morning, before 07:30 PT:**
 - [ ] Open the HN draft, PH page, X scheduler, LinkedIn, 4 Reddit tabs
 - [ ] Open Supabase → waitlist + bug_reports tables
 - [ ] Open PostHog → realtime events dashboard
