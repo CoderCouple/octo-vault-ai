@@ -302,14 +302,14 @@ function Hero() {
           className="mt-5 inline-block"
         >
           <img
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=light&t=1781636081028"
+            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=light&t=1781639988384"
             alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
             width={250}
             height={54}
             className="block dark:hidden"
           />
           <img
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=dark&t=1781636081028"
+            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=dark&t=1781639988384"
             alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
             width={250}
             height={54}
