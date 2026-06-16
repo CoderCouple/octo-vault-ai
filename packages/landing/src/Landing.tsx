@@ -77,27 +77,19 @@ function Nav() {
         </nav>
         <div className="flex items-center gap-3">
           <a
-            href="https://www.producthunt.com/products/octovaultai?utm_source=badge-follow&utm_medium=badge&utm_campaign=badge-octovaultai"
+            href="https://www.producthunt.com/products/octovaultai?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-octovaultai"
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => track("ph_badge_clicked", { placement: "nav", kind: "follow" })}
-            data-attr="ph-badge-nav-follow"
-            aria-label="Follow OctoVaultAI on Product Hunt"
+            onClick={() => track("ph_badge_clicked", { placement: "nav", kind: "featured" })}
+            data-attr="ph-badge-nav-featured"
+            aria-label="OctoVaultAI featured on Product Hunt"
             className="hidden sm:inline-flex"
           >
             <img
-              src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=light&size=small"
-              alt="Follow OctoVaultAI on Product Hunt"
-              width={86}
-              height={32}
-              className="block dark:hidden"
-            />
-            <img
-              src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=dark&size=small"
-              alt="Follow OctoVaultAI on Product Hunt"
-              width={86}
-              height={32}
-              className="hidden dark:block"
+              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=dark&t=1781640196792"
+              alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
+              width={180}
+              height={39}
             />
           </a>
           <a
@@ -293,29 +285,6 @@ function Hero() {
         <p className="mt-2 text-[11px] text-muted-foreground/80">
           Signed &amp; notarized · Developer ID verified by Apple · macOS 12+
         </p>
-        <a
-          href="https://www.producthunt.com/products/octovaultai?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-octovaultai"
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => track("ph_badge_clicked", { placement: "hero" })}
-          data-attr="ph-badge-hero"
-          className="mt-5 inline-block"
-        >
-          <img
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=light&t=1781639988384"
-            alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
-            width={250}
-            height={54}
-            className="block dark:hidden"
-          />
-          <img
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=dark&t=1781639988384"
-            alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
-            width={250}
-            height={54}
-            className="hidden dark:block"
-          />
-        </a>
       </div>
       <div className="relative mx-auto max-w-[1200px] px-6 pb-24 md:pb-32">
         <HeroDemo />
@@ -3289,18 +3258,10 @@ function Footer() {
               aria-label="Follow OctoVaultAI on Product Hunt"
             >
               <img
-                src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=light&size=small"
-                alt="Follow OctoVaultAI on Product Hunt"
-                width={86}
-                height={32}
-                className="block dark:hidden"
-              />
-              <img
                 src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=dark&size=small"
                 alt="Follow OctoVaultAI on Product Hunt"
                 width={86}
                 height={32}
-                className="hidden dark:block"
               />
             </a>
           </div>
