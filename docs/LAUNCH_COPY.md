@@ -77,12 +77,12 @@ https://octovault.ai
 
 > Your private AI paperwork vault. Locally.
 
-**Description** (260 chars):
+**Description** (260 chars max — current is exactly 260):
 
-> Drop in your passports, leases, paystubs, I-797s. OctoVault extracts
-> the facts, builds a knowledge graph, and answers questions with
-> cited sources — entirely on-device. Ollama under the hood. Coming:
-> a Chrome side panel that fills visa and USCIS forms from the graph.
+> Drop in passports, leases, paystubs, I-797s. OctoVault extracts the
+> facts, builds a knowledge graph, and answers questions with cited
+> sources — entirely on-device. Ollama under the hood. Coming: a
+> Chrome side panel that fills visa & USCIS forms from the graph.
 
 **Maker comment (first comment, post at 00:05 PT):**
 
