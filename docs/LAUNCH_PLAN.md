@@ -49,8 +49,8 @@ posting order, ready to ctrl-V on launch day.
 
 ### Inbound infra
 
-- [x] Bug-report endpoint — migration `20260615180000_create_bug_reports.sql` applied to prod on 2026-06-15 (`supabase db push --linked`); anon-key GET returns 200, table is live. Still TODO: verify the `bug-screenshots` storage bucket exists in the Supabase dashboard (Storage → buckets), since `uploadScreenshots()` writes there — without it, reports submit fine but screenshots are dropped.
-- [ ] support@octovault.ai forwarding — user DNS
+- [x] Bug-report endpoint — `bug_reports` table + `bug-screenshots` bucket both live on prod via migrations `20260615180000_create_bug_reports.sql` and `20260615200000_create_bug_screenshots_bucket.sql`. Anon GET + anon upload + public read all verified 200
+- [x] support@octovault.ai forwarding — Namecheap rule live, phone-test email confirmed delivery
 - [x] PostHog funnel events audited — landing-side only by design (no desktop telemetry, per the privacy panel). Measurable funnel: landing visit → `download_mac_clicked` → GitHub release counter → `pricing_cta_clicked` → `waitlist_signup_completed` → `bug_report_submitted`. Nav + footer GitHub clicks now named events
 - [x] Pro waitlist CTAs — `cta-pricing-reserve-{pro,lifetime}` tracked + tier intent carried via sessionStorage into `waitlist_signup_completed` event and the Supabase `source` column. Day-one query: `select source, count(*) from waitlist group by source`
 
@@ -168,12 +168,12 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 - [x] `bug-screenshots` storage bucket exists in Supabase (anon upload + public read both 200)
 - [ ] 60s video on landing page, on YouTube (for embeds), as MP4 attached to PH
 - [ ] HN draft pasted into a notes app, ready to ctrl-V
-- [ ] PH scheduled in the night-before batch (deadline: tonight)
+- [x] PH submission scheduled for Tue Jun 16 00:01 PT
 - [ ] X thread drafted in TweetDeck / Typefully, scheduled
 - [ ] LinkedIn drafted
 - [ ] 5 Reddit drafts ready, mod rules re-read for each sub
 - [ ] Calendar blocked 07:00–17:00 PT Tue — no meetings, just replies
-- [ ] support@octovault.ai DNS propagated (or copy edited to remove the address)
+- [x] support@octovault.ai forwarder verified (no DNS change needed; MX already live)
 
 **Tomorrow morning (Tue Jun 16), before 07:30 PT:**
 - [ ] Open the HN draft, PH page, X scheduler, LinkedIn, 4 Reddit tabs
@@ -186,17 +186,14 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 ## Next engineering blockers
 
 All shipped — Phase 0 engineering items are done. Remaining work is
-operational: notarize, clean-Mac QA, DNS, dashboard checks.
+operational: notarize, clean-Mac QA, scheduling, dashboard checks.
 
 Post-launch backlog (don't start before Jun 16):
 - **Phase E2 vision fallback** for form detection — non-blocking; queue for the Fri Jun 26 "first user-requested feature" slot if it matches feedback
 
-User-side items I can't do but need before launch:
-- 60-sec hero video (film + edit)
-- 20-sec form-fill teaser
-- Network-tab "0 outbound calls" screenshot
-- 3 retina screenshots
-- DNS for `support@octovault.ai`
-- Chrome Web Store submission
-- Notarize from non-MDM Mac on Jun 25
-- Clean-Mac QA pass on Jun 27
+User-side items still pending (T-1 evening):
+- [ ] Notarize DMG from non-MDM Mac
+- [ ] Clean-Mac QA pass
+- [ ] X thread scheduled in Typefully
+- [ ] LinkedIn drafted + scheduled
+- [ ] 5 Reddit tabs bookmarked with drafts pasted
