@@ -302,14 +302,15 @@ function Hero() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // HeroDemo — animated browser + side panel + web form, cycles through phases:
-//   0: import   1: extract   2: graph   3: ask   4: fill
+//   0: import   1: extract   2: resolve   3: graph   4: ask   5: fill
 // ──────────────────────────────────────────────────────────────────────────────
 
-const HERO_PHASE_DURATIONS = [3200, 3600, 4200, 4400, 4200];
+const HERO_PHASE_DURATIONS = [3200, 3600, 3800, 4200, 4400, 4200];
 
 const HERO_PHASES = [
   { label: "Drop docs",              detail: "Drag in passport, license, utility bill" },
   { label: "Extract facts",          detail: "Facts populate with source counts and conflict markers" },
+  { label: "Resolve conflicts",      detail: "Two sources disagreed on the address — pick the canonical, mark the stale" },
   { label: "Build knowledge graph",  detail: "Every fact carries its source — documents link to the facts they prove" },
   { label: "Ask anything",           detail: "Chat with your vault — answers cite the source documents" },
   { label: "Fill the form",          detail: "Chrome side panel matches every field from the graph" },
@@ -347,8 +348,8 @@ function HeroDemo() {
             phase. Height is constant (480px) so the hero box itself
             doesn't jump between phases — only what's inside the
             right column changes. */}
-        <div className={`grid h-[480px] ${phase === 4 ? "grid-cols-[1.4fr,1fr]" : "grid-cols-1"}`}>
-          {phase === 4 && <BrowserPane phase={phase} />}
+        <div className={`grid h-[480px] ${phase === 5 ? "grid-cols-[1.4fr,1fr]" : "grid-cols-1"}`}>
+          {phase === 5 && <BrowserPane phase={phase} />}
           <SidePanelPane phase={phase} />
         </div>
       </div>
@@ -399,12 +400,12 @@ const DEMO_FIELDS: Array<{ label: string; key: string; value: string; fillsAt: n
 ];
 
 function BrowserPane({ phase }: { phase: number }) {
-  // BrowserPane is only mounted during the fill phase (4), so
+  // BrowserPane is only mounted during the fill phase (5), so
   // there's no need for per-phase placeholders — the form always
   // shows when this component is on screen.
   const [filledCount, setFilledCount] = useState(0);
   useEffect(() => {
-    if (phase !== 4) { setFilledCount(0); return; }
+    if (phase !== 5) { setFilledCount(0); return; }
     const id = setInterval(() => {
       setFilledCount((n) => (n >= DEMO_FIELDS.length ? n : n + 1));
     }, 480);
@@ -413,7 +414,7 @@ function BrowserPane({ phase }: { phase: number }) {
 
   return (
     <div className="border-r border-border bg-background p-5">
-      {phase === 4 ? (
+      {phase === 5 ? (
         <>
           <div className="mb-3 flex items-center gap-2">
             <FileText className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
@@ -517,12 +518,12 @@ function SidePanelPane({ phase }: { phase: number }) {
     setFactCount(DEMO_FACTS.length);
   }, [phase]);
 
-  // Phase-3 ask: type the question, then stream the answer character
+  // Phase-4 ask: type the question, then stream the answer character
   // by character — mirrors the real Spotlight overlay's UX.
   const [askTyped, setAskTyped] = useState(0);
   const [answerTyped, setAnswerTyped] = useState(0);
   useEffect(() => {
-    if (phase !== 3) { setAskTyped(0); setAnswerTyped(0); return; }
+    if (phase !== 4) { setAskTyped(0); setAnswerTyped(0); return; }
     setAskTyped(0); setAnswerTyped(0);
     let qTimer: number | null = null;
     let aTimer: number | null = null;
@@ -550,12 +551,29 @@ function SidePanelPane({ phase }: { phase: number }) {
     return () => { if (qTimer) window.clearInterval(qTimer); if (aTimer) window.clearInterval(aTimer); };
   }, [phase]);
 
-  // Phase-2 graph build: 0 → 1 progress driver. Nodes and edges
+  // Phase-2 conflict-resolution: 0 → 1 progress driver. Drives a
+  // four-beat reveal — both candidates appear, then canonical/stale
+  // stamps animate in, then the "resolved by recency" footer.
+  const [conflictProgress, setConflictProgress] = useState(0);
+  useEffect(() => {
+    if (phase !== 2) { setConflictProgress(0); return; }
+    setConflictProgress(0);
+    const start = Date.now();
+    const duration = 3400;
+    const id = window.setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / duration);
+      setConflictProgress(t);
+      if (t >= 1) window.clearInterval(id);
+    }, 30);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  // Phase-3 graph build: 0 → 1 progress driver. Nodes and edges
   // fade in proportionally so the graph "draws itself" during the
   // 4.2s allotted for the phase.
   const [graphProgress, setGraphProgress] = useState(0);
   useEffect(() => {
-    if (phase !== 2) { setGraphProgress(0); return; }
+    if (phase !== 3) { setGraphProgress(0); return; }
     setGraphProgress(0);
     const start = Date.now();
     const duration = 3600;  // leave a small still-frame at the end of the phase
@@ -586,15 +604,16 @@ function SidePanelPane({ phase }: { phase: number }) {
       </div>
       {/* Tabs — same order as the phase steps so the active tab moves
           left-to-right as the demo progresses:
-          0 Drop docs → Docs · 1 Extract → Facts · 2 Build graph → Graph ·
-          3 Ask → Chat · 4 Fill → Docs (panel shows the facts being filled). */}
+          0 Drop docs → Docs · 1 Extract → Facts · 2 Resolve → Conflicts ·
+          3 Build graph → Graph · 4 Ask → Chat · 5 Fill → Facts. */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
-        {["Docs", "Facts", "Graph", "Chat"].map((t) => {
+        {["Docs", "Facts", "Conflicts", "Graph", "Chat"].map((t) => {
           const activeTab =
-            phase === 3 ? "Chat"
-            : phase === 2 ? "Graph"
+            phase === 4 ? "Chat"
+            : phase === 3 ? "Graph"
+            : phase === 2 ? "Conflicts"
             : phase === 1 ? "Facts"
-            : phase === 4 ? "Facts"
+            : phase === 5 ? "Facts"
             : "Docs";
           const active = t === activeTab;
           return (
@@ -626,11 +645,12 @@ function SidePanelPane({ phase }: { phase: number }) {
             ))}
           </div>
         )}
-        {phase === 2 && <GraphPanePhase progress={graphProgress} />}
-        {phase === 3 && (
+        {phase === 2 && <ConflictPanePhase progress={conflictProgress} />}
+        {phase === 3 && <GraphPanePhase progress={graphProgress} />}
+        {phase === 4 && (
           <ChatPanePhase askTyped={askTyped} answerTyped={answerTyped} />
         )}
-        {phase === 4 && (
+        {phase === 5 && (
           // During the form-fill phase, the side panel acts as the
           // visible "source of truth" — facts ready to flow into the
           // form on the left. Render them statically (no further
@@ -645,10 +665,10 @@ function SidePanelPane({ phase }: { phase: number }) {
           </div>
         )}
       </div>
-      {/* Fill button — only appears in phase 4 when the form is
+      {/* Fill button — only appears in phase 5 when the form is
           present. Prior phases have no form to fill against, so
           showing the affordance would be misleading. */}
-      {phase === 4 && (
+      {phase === 5 && (
         <div className="border-t border-border p-3">
           <button className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-foreground text-[12px] font-semibold text-background transition-all">
             <Sparkles className="h-3 w-3" />
@@ -979,6 +999,85 @@ function ChatPanePhase({ askTyped, answerTyped }: { askTyped: number; answerType
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Phase-2 conflict resolution — the same Address fact that surfaces as
+// "conflict" in phase 1 now shows the two competing values and how the
+// canonical one is chosen. Drives off a single 0..1 progress so each
+// reveal beat fades in at a fixed point of the phase.
+function ConflictPanePhase({ progress }: { progress: number }) {
+  const showCandidates = progress > 0.10;
+  const showSources    = progress > 0.30;
+  const showStamps     = progress > 0.55;
+  const showFooter     = progress > 0.85;
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Resolve conflict
+        </div>
+        <span className="rounded border border-dashed border-muted-foreground bg-background px-1.5 py-0 text-[9px] uppercase tracking-wider text-muted-foreground">
+          Address
+        </span>
+      </div>
+      <div
+        className={`rounded-md border border-border bg-background px-2.5 py-2 transition-all duration-500 ${
+          showCandidates ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[11.5px]">221B Baker St, London</span>
+          <span
+            className={`inline-flex items-center gap-1 rounded border border-foreground bg-foreground px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background transition-opacity duration-500 ${
+              showStamps ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <Check className="h-2.5 w-2.5" /> canonical
+          </span>
+        </div>
+        <div
+          className={`mt-1 text-[9.5px] text-muted-foreground transition-opacity duration-500 ${
+            showSources ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          from lease.pdf · 2024-06
+        </div>
+      </div>
+      <div
+        className={`rounded-md border border-dashed border-muted-foreground bg-background px-2.5 py-2 transition-all duration-500 ${
+          showCandidates ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[11.5px] text-muted-foreground line-through">
+            84 Maple Ave, Brooklyn
+          </span>
+          <span
+            className={`rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-500 ${
+              showStamps ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            stale
+          </span>
+        </div>
+        <div
+          className={`mt-1 text-[9.5px] text-muted-foreground transition-opacity duration-500 ${
+            showSources ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          from utility_bill.pdf · 2022-08
+        </div>
+      </div>
+      <div
+        className={`flex items-center gap-1.5 pt-0.5 text-[10px] text-muted-foreground transition-opacity duration-500 ${
+          showFooter ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <Check className="h-3 w-3" />
+        Canonical chosen by recency — graph uses lease.pdf
+      </div>
     </div>
   );
 }
