@@ -269,6 +269,29 @@ function Hero() {
         <p className="mt-2 text-[11px] text-muted-foreground/80">
           Signed &amp; notarized · Developer ID verified by Apple · macOS 12+
         </p>
+        <a
+          href="https://www.producthunt.com/products/octovaultai?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-octovaultai"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => track("ph_badge_clicked", { placement: "hero" })}
+          data-attr="ph-badge-hero"
+          className="mt-5 inline-block"
+        >
+          <img
+            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=light&t=1781636081028"
+            alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
+            width={250}
+            height={54}
+            className="block dark:hidden"
+          />
+          <img
+            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1172948&theme=dark&t=1781636081028"
+            alt="OctoVaultAI - Your private AI paperwork vault. Locally. | Product Hunt"
+            width={250}
+            height={54}
+            className="hidden dark:block"
+          />
+        </a>
       </div>
       <div className="relative mx-auto max-w-[1200px] px-6 pb-24 md:pb-32">
         <HeroDemo />
