@@ -1027,80 +1027,117 @@ function ChatPanePhase({ askTyped, answerTyped }: { askTyped: number; answerType
   );
 }
 
-// Phase-2 conflict resolution — the same Address fact that surfaces as
-// "conflict" in phase 1 now shows the two competing values and how the
-// canonical one is chosen. Drives off a single 0..1 progress so each
-// reveal beat fades in at a fixed point of the phase.
+// Phase-2 conflict resolution — mirrors the real Conflicts tab from
+// the in-app Knowledge Graph view: a red-flag block (DOB never differs
+// across docs, so two passports disagreeing is a real flag), and a
+// stale block (older address superseded by a newer source — auto-
+// resolved). Drives off a single 0..1 progress so each beat fades in
+// at a fixed point of the phase budget.
 function ConflictPanePhase({ progress }: { progress: number }) {
-  const showCandidates = progress > 0.10;
-  const showSources    = progress > 0.30;
-  const showStamps     = progress > 0.55;
-  const showFooter     = progress > 0.85;
+  const showRedFlag    = progress > 0.05;
+  const showCandidates = progress > 0.20;
+  const showSources    = progress > 0.35;
+  const showCanonical  = progress > 0.55;
+  const showStale      = progress > 0.72;
+  const showFooter     = progress > 0.90;
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Resolve conflict
-        </div>
-        <span className="rounded border border-dashed border-muted-foreground bg-background px-1.5 py-0 text-[9px] uppercase tracking-wider text-muted-foreground">
-          Address
-        </span>
+      <div className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Resolve conflicts
       </div>
+
+      {/* Red flag — two passports disagree on DOB. User-action needed. */}
       <div
-        className={`rounded-md border border-border bg-background px-2.5 py-2 transition-all duration-500 ${
-          showCandidates ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
+        className={`space-y-1.5 rounded-md border-2 border-foreground bg-card p-2 transition-all duration-500 ${
+          showRedFlag ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
         }`}
       >
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[11.5px]">221B Baker St, London</span>
-          <span
-            className={`inline-flex items-center gap-1 rounded border border-foreground bg-foreground px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background transition-opacity duration-500 ${
-              showStamps ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <Check className="h-2.5 w-2.5" /> canonical
+        <div className="flex items-center justify-between">
+          <span className="text-[10.5px] font-medium">Date of Birth</span>
+          <span className="rounded border border-border bg-background px-1.5 py-0 text-[8.5px] uppercase tracking-wider text-muted-foreground">
+            red flag
           </span>
         </div>
+        {/* Candidate 1 — pinned canonical */}
         <div
-          className={`mt-1 text-[9.5px] text-muted-foreground transition-opacity duration-500 ${
-            showSources ? "opacity-100" : "opacity-0"
+          className={`flex items-center justify-between gap-2 rounded border border-border bg-background px-1.5 py-1 transition-opacity duration-500 ${
+            showCandidates ? "opacity-100" : "opacity-0"
           }`}
         >
-          from lease.pdf · 2024-06
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[11px]">1992-03-15</span>
+              <span
+                className={`rounded border border-border bg-card px-1 text-[8px] uppercase tracking-wider transition-opacity duration-500 ${
+                  showCanonical ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                canonical
+              </span>
+              <Pin
+                className={`h-2.5 w-2.5 transition-opacity duration-500 ${
+                  showCanonical ? "opacity-100" : "opacity-0"
+                }`}
+              />
+            </div>
+            <div
+              className={`mt-0.5 text-[9px] text-muted-foreground transition-opacity duration-500 ${
+                showSources ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              passport.pdf · primary · 0.97
+            </div>
+          </div>
+        </div>
+        {/* Candidate 2 — dismissed via Trash */}
+        <div
+          className={`flex items-center justify-between gap-2 rounded border border-border bg-background px-1.5 py-1 transition-opacity duration-500 ${
+            showCandidates ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] text-muted-foreground line-through">1992-03-25</div>
+            <div
+              className={`mt-0.5 text-[9px] text-muted-foreground transition-opacity duration-500 ${
+                showSources ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              insurance.pdf · ocr · 0.82
+            </div>
+          </div>
+          <Trash2
+            className={`h-3 w-3 text-muted-foreground transition-opacity duration-500 ${
+              showCanonical ? "opacity-100" : "opacity-0"
+            }`}
+          />
         </div>
       </div>
+
+      {/* Stale — older license address superseded by newer utility bill.
+          Auto-resolved by recency; no candidate list needed. */}
       <div
-        className={`rounded-md border border-dashed border-muted-foreground bg-background px-2.5 py-2 transition-all duration-500 ${
-          showCandidates ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
+        className={`rounded-md border border-dashed border-muted-foreground bg-card p-2 transition-all duration-500 ${
+          showStale ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
         }`}
       >
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[11.5px] text-muted-foreground line-through">
-            84 Maple Ave, Brooklyn
-          </span>
-          <span
-            className={`rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-500 ${
-              showStamps ? "opacity-100" : "opacity-0"
-            }`}
-          >
+        <div className="flex items-center justify-between">
+          <span className="text-[10.5px] font-medium">Address</span>
+          <span className="rounded border border-border bg-background px-1.5 py-0 text-[8.5px] uppercase tracking-wider text-muted-foreground">
             stale
           </span>
         </div>
-        <div
-          className={`mt-1 text-[9.5px] text-muted-foreground transition-opacity duration-500 ${
-            showSources ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          from utility_bill.pdf · 2022-08
+        <div className="mt-1 text-[9px] text-muted-foreground">
+          license.pdf (2022) superseded by utility_bill.pdf (2024)
         </div>
       </div>
+
       <div
-        className={`flex items-center gap-1.5 pt-0.5 text-[10px] text-muted-foreground transition-opacity duration-500 ${
+        className={`flex items-center gap-1.5 pt-0.5 text-[9.5px] text-muted-foreground transition-opacity duration-500 ${
           showFooter ? "opacity-100" : "opacity-0"
         }`}
       >
         <Check className="h-3 w-3" />
-        Canonical chosen by recency — graph uses lease.pdf
+        Pinned canonical · graph re-resolved
       </div>
     </div>
   );
