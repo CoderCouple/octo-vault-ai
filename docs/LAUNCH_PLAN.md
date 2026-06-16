@@ -162,10 +162,10 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 **Tonight (Mon Jun 15):**
 - [ ] DMG signed + notarized + stapled, downloadable, SHA in the release notes
 - [ ] Clean-Mac QA pass complete; 5 demo questions return cited answers
-- [ ] Landing prerendered, OG unfurl tested on X + Slack + iMessage + WhatsApp
-- [ ] PostHog firing on `download_mac_clicked`, `pricing_cta_clicked`, `waitlist_signup_completed`, `bug_report_submitted` (the four landing-side events that actually exist)
-- [ ] Bug-report endpoint smoke-curl returns 200 (✅ done — verify still good)
-- [ ] `bug-screenshots` storage bucket exists in Supabase
+- [x] Landing prerendered, OG unfurl verified against 7 scrapers (Twitter / Slack / Facebook / LinkedIn / Discord / WhatsApp / Safari) — all see identical og:image, og:title, og:description; og-image.png returns 200, real pixels 1200×630 match declared
+- [ ] PostHog firing on `download_mac_clicked`, `pricing_cta_clicked`, `waitlist_signup_completed`, `bug_report_submitted` — verify in PostHog Live Events after the cold-incognito test
+- [x] Bug-report endpoint smoke-curl returns 200 (re-verified T-1 evening)
+- [x] `bug-screenshots` storage bucket exists in Supabase (anon upload + public read both 200)
 - [ ] 60s video on landing page, on YouTube (for embeds), as MP4 attached to PH
 - [ ] HN draft pasted into a notes app, ready to ctrl-V
 - [ ] PH scheduled in the night-before batch (deadline: tonight)
