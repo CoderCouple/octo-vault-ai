@@ -75,10 +75,11 @@ remaining gate between "Phase 0 done" and "Show HN goes live":
       to propagate — do it now. If it can't land before 07:30 PT,
       strip the `support@` line from launch copy and use a personal
       email instead; don't ship a dead address.
-- [ ] **`bug-screenshots` storage bucket** confirmed in Supabase
-      dashboard (Storage → buckets) — public read, anon insert. 30-sec
-      click. Without it, bug-report text submissions succeed but
-      screenshots are silently dropped.
+- [x] **`bug-screenshots` storage bucket** created via migration
+      `20260615200000_create_bug_screenshots_bucket.sql` and verified
+      end-to-end: anon upload → 200, public read → 200. Cleanup: a
+      `smoke-*.png` test file is sitting in the bucket — delete from
+      the Supabase dashboard if you want it gone.
 
 **Risk acknowledged (T-1 compression):** soft launch is skipped *and*
 the launch window moved forward 14 days. The first strangers to
