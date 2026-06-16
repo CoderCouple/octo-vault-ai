@@ -3113,12 +3113,35 @@ function Footer() {
             A private knowledge graph for your personal paperwork. Local-only.
             On-device. Your documents stay yours.
           </p>
-          <div className="mt-5 flex gap-2.5">
+          <div className="mt-5 flex items-center gap-2.5">
             <a href="https://github.com/CoderCouple/octo-vault-ai" aria-label="GitHub"
               data-attr="footer-github"
               target="_blank" rel="noreferrer"
               className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:border-foreground/40">
               <Github className="h-4 w-4" />
+            </a>
+            <a
+              href="https://www.producthunt.com/products/octovaultai?utm_source=badge-follow&utm_medium=badge&utm_campaign=badge-octovaultai"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => track("ph_badge_clicked", { placement: "footer", kind: "follow" })}
+              data-attr="ph-badge-footer-follow"
+              aria-label="Follow OctoVaultAI on Product Hunt"
+            >
+              <img
+                src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=light&size=small"
+                alt="Follow OctoVaultAI on Product Hunt"
+                width={86}
+                height={32}
+                className="block dark:hidden"
+              />
+              <img
+                src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1248625&theme=dark&size=small"
+                alt="Follow OctoVaultAI on Product Hunt"
+                width={86}
+                height={32}
+                className="hidden dark:block"
+              />
             </a>
           </div>
         </div>
