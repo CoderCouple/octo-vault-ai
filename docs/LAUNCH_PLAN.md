@@ -1,13 +1,13 @@
 # OctoVault launch plan
 
-Target: **Tue 2026-06-23, 07:30 PT** (Show HN). PH submission +
-Typefully X-thread are both pre-scheduled for that morning, which
-sets the date.
+Target: **Tue 2026-06-30, 07:30 PT** (Show HN). Pushed back by one
+week from the previously scheduled Jun 23. PH submission + Typefully
+X-thread need to be re-scheduled in their respective tools.
 
-Last updated: 2026-06-16 (T-7) — Phase 0 is fully done, both inbound
-infra and assets are shipped. The week between now and launch goes
-to soft-launch derisking, notarization, and clean-Mac QA — the items
-that get done badly when compressed into T-1.
+Last updated: 2026-06-22 (T-8) — Phase 0 fully done. The extra week
+gives more room for soft-launch derisking + notarization. Watch out
+for the Jul 4 US holiday window: anything posted Thu Jul 2 - Mon Jul 6
+hits checked-out audiences. Reddit cadence below is shaped around it.
 
 Companion: `docs/LAUNCH_COPY.md` — every public-facing post in
 posting order, ready to ctrl-V on launch day.
@@ -57,9 +57,9 @@ posting order, ready to ctrl-V on launch day.
 
 ---
 
-## Pre-launch prerequisites (Mon Jun 16 → Mon Jun 22)
+## Pre-launch prerequisites (Mon Jun 22 → Mon Jun 29)
 
-Launch is Tue Jun 23 07:30 PT. Items below are the remaining gate.
+Launch is Tue Jun 30 07:30 PT. Items below are the remaining gate.
 Order is by cost-of-miss, not by date:
 
 - [ ] **Notarize the DMG from the non-MDM Mac.** The eBay-managed dev
@@ -98,7 +98,7 @@ Mitigations:
 
 ---
 
-## Phase 2 — Launch day (Tue Jun 23)
+## Phase 2 — Launch day (Tue Jun 30)
 
 Order matters. HN first, everything else feeds it.
 
@@ -118,13 +118,13 @@ risk subs keeps the launch out of the shadowban tarpit.
 
 | Date | Sub | Posted from | Why this slot |
 |---|---|---|---|
-| Tue Jun 23 (launch day) | r/macapps | your account | Lowest risk, highest Mac-audience relevance |
-| Wed Jun 24 | r/LocalLLaMA | your account | Technical-build framing; LocalLLaMA tolerates self-promo if substance is there |
-| Fri Jun 26 | r/selfhosted | Payal's account | Strict "must be self-hostable" rule — Mac-only is gray; distributing across accounts reduces spam-classifier weight |
-| Mon Jun 29 | r/Obsidian | Payal's account | New-account filter is harsh; ask-a-question framing helps |
-| Wed Jul 1 | r/immigration | aged account; ModMail first | Strictest of the five; mod-DM before posting (template below) |
+| Tue Jun 30 (launch day) | r/macapps | your account | Lowest risk, highest Mac-audience relevance |
+| Wed Jul 1 | r/LocalLLaMA | your account | Technical-build framing; LocalLLaMA tolerates self-promo if substance is there |
+| Mon Jul 6 | r/selfhosted | Payal's account | Skip Jul 4 weekend — tech audience is checked out Thu Jul 2 - Mon Jul 6 morning |
+| Wed Jul 8 | r/Obsidian | Payal's account | New-account filter is harsh; ask-a-question framing helps |
+| Fri Jul 10 | r/immigration | aged account; ModMail first | Strictest of the five; mod-DM before posting (template below) |
 
-**ModMail template for r/immigration (send Sat Jun 27, post Wed Jul 1):**
+**ModMail template for r/immigration (send Mon Jul 6, post Fri Jul 10):**
 > Hi mods — I built a free Mac tool that helps immigrants keep visa /
 > I-797 / DS-160 docs queryable offline. Would a post about it be a
 > fit for the sub, or against rules? Happy to follow whatever
@@ -141,14 +141,14 @@ Reply window:
 
 ---
 
-## Phase 3 — Sustain (Wed Jun 24 → Tue Jul 7)
+## Phase 3 — Sustain (Wed Jul 1 → Tue Jul 14)
 
-- **Wed Jun 24** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
-- **Thu Jun 25** — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each
-- **Mon Jun 29** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
-- **Wed Jul 1** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
-- **Fri Jul 3** — Ship the first user-requested feature visibly. Show the loop is tight
-- **Tue Jul 7** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
+- **Wed Jul 1** — Email everyone on the Pro waitlist. One question: *"What did you try to ask first?"* Their answers are the roadmap
+- **Mon Jul 6** — Newsletter outreach: Ben's Bites, TLDR AI, Console.dev, Indie Hackers, Recommendo. Personal email each. Skipped Thu Jul 2 - Fri Jul 3 because everyone's checked out for Jul 4 weekend
+- **Mon Jul 6** — Second-wave Reddit (Obsidian, privacy, digitalnomad). Write the "How OctoVault works under the hood" technical blog post (long-tail SEO for "local AI personal documents")
+- **Wed Jul 8** — Repeat-Show-HN: *"OctoVault one week later: 2,000 downloads"* — only if numbers support it. Data, not promo
+- **Fri Jul 10** — Ship the first user-requested feature visibly. Show the loop is tight
+- **Tue Jul 14** — Internal retro: conversion funnel, top friction, top requested feature, top objection. Decide whether form-fill ships in 2 weeks or 4
 
 ---
 
@@ -177,9 +177,9 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 
 ---
 
-## Day-of checklist (Mon Jun 22 evening + Tue Jun 23 morning)
+## Day-of checklist (Mon Jun 29 evening + Tue Jun 30 morning)
 
-**Mon Jun 22 evening:**
+**Mon Jun 29 evening:**
 - [ ] DMG signed + notarized + stapled, downloadable, SHA in the release notes
 - [ ] Clean-Mac QA pass complete; 5 demo questions return cited answers
 - [x] Landing prerendered, OG unfurl verified against 7 scrapers (Twitter / Slack / Facebook / LinkedIn / Discord / WhatsApp / Safari) — all see identical og:image, og:title, og:description; og-image.png returns 200, real pixels 1200×630 match declared
@@ -195,7 +195,7 @@ If HN comments < 30 by 2pm PT, the title is wrong and can't be edited — focus 
 - [ ] Calendar blocked 07:00–17:00 PT Tue — no meetings, just replies
 - [x] support@octovault.ai forwarder verified (no DNS change needed; MX already live)
 
-**Tue Jun 23 morning, before 07:30 PT:**
+**Tue Jun 30 morning, before 07:30 PT:**
 - [ ] Open the HN draft, PH page, X scheduler, LinkedIn, 4 Reddit tabs
 - [ ] Open Supabase → waitlist + bug_reports tables
 - [ ] Open PostHog → realtime events dashboard
@@ -209,7 +209,7 @@ All shipped — Phase 0 engineering items are done. Remaining work is
 operational: notarize, clean-Mac QA, scheduling, dashboard checks.
 
 Post-launch backlog (don't start before Jun 16):
-- **Phase E2 vision fallback** for form detection — non-blocking; queue for the Fri Jun 26 "first user-requested feature" slot if it matches feedback
+- **Phase E2 vision fallback** for form detection — non-blocking; queue for the Fri Jul 10 "first user-requested feature" slot if it matches feedback
 
 User-side items still pending (T-1 evening):
 - [ ] Notarize DMG from non-MDM Mac
