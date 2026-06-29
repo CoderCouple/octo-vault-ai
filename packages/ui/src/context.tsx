@@ -45,6 +45,21 @@ export interface AppHost {
   // null means "fall back to tesseract." Implementations may cache
   // a "model installed" check across calls.
   visionEngine?(): Promise<import("@octovault/core").VisionEngine | null>;
+  // Forces a vision engine for a specific model regardless of the
+  // global Settings → visionModel value. Used by the per-document
+  // "Re-extract with vision OCR" action so the user can recover a
+  // single bad-OCR document without flipping the global default and
+  // re-uploading. Returns null if the model isn't installed.
+  visionEngineForModel?(modelName: string): Promise<import("@octovault/core").VisionEngine | null>;
+  // Returns installed Ollama model names. Used by the per-document
+  // re-OCR flow to find an installed vision-capable model. Optional
+  // because the extension's read-only adapter doesn't expose it.
+  listOllamaModels?(): Promise<string[]>;
+  // Reads the original file bytes for a document by id. Returns null
+  // if the file was moved/deleted or the surface doesn't have access
+  // (extension is read-only). Used by re-OCR to avoid forcing a
+  // re-upload when the path is still valid.
+  readDocumentBytes?(docId: string): Promise<{ bytes: Uint8Array; mimeType?: string } | null>;
   // Optional desktop-only fast path. When absent or when it fails,
   // Documents falls back to core's browser-safe PDF.js/Tesseract path.
   parsePdfText?(file: File, opts?: PdfExtractOptions): Promise<ExtractedPdf>;

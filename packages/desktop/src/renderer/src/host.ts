@@ -139,6 +139,36 @@ export const desktopHost: AppHost = {
       return null;
     }
   },
+  // Builds a vision engine for an explicitly-chosen model, bypassing
+  // the global Settings → visionModel default. Used by the per-doc
+  // "Re-extract with vision OCR" action.
+  async visionEngineForModel(modelName: string): Promise<VisionEngine | null> {
+    const c = await cfg();
+    try {
+      const installed = await window.octovault!.ollama.listModels(c);
+      if (!hasModel(installed, modelName)) return null;
+      return {
+        recognize: async (imageBase64: string) => {
+          const r = await window.octovault!.ollama.vision(c, {
+            model: modelName,
+            prompt: VISION_OCR_PROMPT,
+            images: [imageBase64],
+            options: { temperature: 0.1 },
+          });
+          return r.response;
+        },
+      };
+    } catch {
+      return null;
+    }
+  },
+  async listOllamaModels(): Promise<string[]> {
+    const c = await cfg();
+    return window.octovault!.ollama.listModels(c);
+  },
+  async readDocumentBytes(docId: string): Promise<{ bytes: Uint8Array; mimeType?: string } | null> {
+    return window.octovault!.doc.readBytes(docId);
+  },
   async parsePdfText(file: File, _opts?: PdfExtractOptions): Promise<ExtractedPdf> {
     const filePath = window.octovault?.doc.pathFor(file);
     if (filePath) {

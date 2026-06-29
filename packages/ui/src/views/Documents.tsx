@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertCircle, Check, FileText, RotateCw, ScanLine, Trash2, Upload, X,
+  AlertCircle, Check, FileText, RotateCw, ScanLine, Sparkles, Trash2, Upload, X,
 } from "lucide-react";
 import {
   addCandidates, chunkText, fieldByKey,
@@ -226,20 +226,24 @@ export function Documents() {
     });
   }
 
-  async function runJob(job: ImportJob) {
+  async function runJob(
+    job: ImportJob,
+    opts: { existingDocId?: string; forceVisionEngine?: import("@octovault/core").VisionEngine } = {}
+  ) {
     const id = job.id;
     try {
-      const docId = crypto.randomUUID();
+      const docId = opts.existingDocId ?? crypto.randomUUID();
       const lower = job.fileName.toLowerCase();
       let text = "";
       let pageCount = 1;
       let ocrUsed = false;
 
-      // Try to get a vision-OCR engine up-front (one model-installed
-      // check per file). When present, pdf.ts uses it instead of
-      // tesseract for any page that needs OCR; on failure it falls
-      // back per-page so a single image error doesn't abort the import.
-      const visionEngine = (await host.visionEngine?.()) ?? undefined;
+      // When the caller forced a vision engine (per-doc Re-OCR action
+      // bypassing the global setting), use it. Otherwise consult the
+      // global Settings → visionModel via host.visionEngine() which
+      // returns null when the default "" is set — so pdf.ts takes
+      // the fast Tesseract path.
+      const visionEngine = opts.forceVisionEngine ?? (await host.visionEngine?.()) ?? undefined;
 
       if (lower.endsWith(".pdf")) {
         updateJob(id, { state: "reading", progress: 0.05, message: "Reading PDF" });
@@ -333,14 +337,18 @@ export function Documents() {
       // line of defense against any concurrent / racing import. Note
       // entityId is only known here — the upstream dedup uses
       // (name, bytes), which can let through a re-tag, so we re-check.
-      const existing = await storage.listDocuments();
-      const dupe = existing.find((d) =>
-        d.entityId === entity.id && d.name === job.fileName && d.bytes === job.size,
-      );
-      if (dupe) {
-        updateJob(id, { state: "done", progress: 1, message: "Duplicate — skipped" });
-        setTimeout(() => removeJob(id), 2500);
-        return;
+      // Skipped when re-OCRing in place (existingDocId set), because
+      // the "duplicate" IS the document we're explicitly replacing.
+      if (!opts.existingDocId) {
+        const existing = await storage.listDocuments();
+        const dupe = existing.find((d) =>
+          d.entityId === entity.id && d.name === job.fileName && d.bytes === job.size,
+        );
+        if (dupe) {
+          updateJob(id, { state: "done", progress: 1, message: "Duplicate — skipped" });
+          setTimeout(() => removeJob(id), 2500);
+          return;
+        }
       }
       await storage.saveDocument(doc);
       const withEntity: FieldCandidate[] = candidates.map((c) => ({ ...c, entityId: entity.id }));
@@ -575,6 +583,91 @@ export function Documents() {
   // Re-extract: enqueue this doc as a synthetic job that skips the
   // PDF/OCR pass (text is already stored) and re-runs extraction
   // + indexing with the current code path.
+  // Per-document escape hatch for when Tesseract garbled a scan and
+  // the user wants to re-try with the slow-but-better vision model.
+  // Skips the global Settings → visionModel flip + manual re-upload —
+  // reads the original file bytes from disk (Electron) or the stored
+  // data URL, picks an installed vision-capable model (preferring
+  // qwen3-vl, then qwen2.5-vl, then llava / minicpm), and re-runs
+  // the full pipeline (PDF parse → vision OCR → extraction) with the
+  // chosen engine.
+  async function reOcrWithVision(d: StoredDocument) {
+    if (readOnly) return;
+
+    // 1. Pick a vision model that's actually installed.
+    if (!host.listOllamaModels || !host.visionEngineForModel) {
+      alert("Vision re-OCR is only available in the desktop app.");
+      return;
+    }
+    const installed = await host.listOllamaModels();
+    const visionCandidates = installed.filter((m) => /\b(vl|vision|llava|minicpm)\b/i.test(m));
+    if (visionCandidates.length === 0) {
+      alert("No vision-capable model is installed. Open Settings → Models and pull qwen3-vl:8b (or similar), then try again.");
+      return;
+    }
+    const chosenModel =
+      visionCandidates.find((m) => m.startsWith("qwen3-vl")) ??
+      visionCandidates.find((m) => m.includes("qwen")) ??
+      visionCandidates[0];
+
+    // 2. Recover the original file bytes. Prefer disk (filePath) via
+    //    the desktop preload; fall back to the stored data URL.
+    let file: File | null = null;
+    if (host.readDocumentBytes) {
+      try {
+        const recovered = await host.readDocumentBytes(d.id);
+        if (recovered) {
+          // Blob wrapping sidesteps Uint8Array's ArrayBufferLike vs
+          // strict ArrayBuffer typing mismatch (the IPC unmarshaler
+          // can return a Uint8Array backed by SharedArrayBuffer).
+          const mime = recovered.mimeType ?? d.mimeType ?? "application/octet-stream";
+          const blob = new Blob([recovered.bytes as unknown as BlobPart], { type: mime });
+          file = new File([blob], d.name, { type: mime });
+        }
+      } catch (e) {
+        console.warn("[re-ocr] readDocumentBytes failed:", e);
+      }
+    }
+    if (!file && d.fileDataUrl) {
+      try {
+        const res = await fetch(d.fileDataUrl);
+        const blob = await res.blob();
+        file = new File([blob], d.name, { type: d.mimeType ?? blob.type });
+      } catch (e) {
+        console.warn("[re-ocr] fileDataUrl recovery failed:", e);
+      }
+    }
+    if (!file) {
+      alert(`Couldn't find the original file for "${d.name}". Remove it and re-upload with vision OCR enabled in Settings → Models.`);
+      return;
+    }
+
+    // 3. Build a vision engine for the chosen model (bypasses the
+    //    global setting being empty).
+    const visionEngine = await host.visionEngineForModel(chosenModel);
+    if (!visionEngine) {
+      alert(`Vision model "${chosenModel}" is not reachable. Make sure Ollama is running.`);
+      return;
+    }
+
+    // 4. Clear existing extracted data, then re-run the full pipeline
+    //    against the same docId so the row updates in place.
+    await storage.deleteCandidatesFromDoc(d.id);
+    await storage.deleteEmbeddingsForDoc(d.id);
+    await storage.deleteRecordsFromDoc(d.id);
+    const job: ImportJob = {
+      id: crypto.randomUUID(),
+      file,
+      fileName: d.name,
+      size: d.bytes,
+      state: "reading",
+      progress: 0,
+      message: `Re-OCRing with ${chosenModel}…`,
+    };
+    addJob(job);
+    await runJob(job, { existingDocId: d.id, forceVisionEngine: visionEngine });
+  }
+
   async function reExtract(d: StoredDocument) {
     if (readOnly) return;
     // First clear the existing extracted data so the new pass starts clean.
@@ -750,8 +843,16 @@ export function Documents() {
               </div>
               {!readOnly && (
                 <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" onClick={() => void reExtract(d)} title="Re-extract">
+                  <Button variant="ghost" size="icon" onClick={() => void reExtract(d)} title="Re-extract (uses stored text)">
                     <RotateCw className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void reOcrWithVision(d)}
+                    title="Re-OCR with vision model (slower, better on scanned docs)"
+                  >
+                    <Sparkles className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => setPendingDelete(d)} title="Remove">
                     <Trash2 className="h-4 w-4" />
