@@ -9,26 +9,21 @@ import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { Agent, setGlobalDispatcher } from "undici";
 import * as vault from "./sqlite-store";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const isDev = !app.isPackaged;
 
-// Ollama generation can legitimately take >5 min for the first byte
-// when the model is cold-loading off disk or the prompt is large
-// (multi-page scanned PDF → tens of thousands of OCR tokens). Node's
-// default undici headersTimeout is 5 min, which throws
-// UND_ERR_HEADERS_TIMEOUT → TypeError: fetch failed mid-extraction
-// — observed in the wild on IMM5756 (Canadian visa form) on M1.
-// Disable headers + body timeouts entirely so every Ollama call
-// can wait as long as the model needs. Keep connectTimeout short
-// so a wrong port still fails fast.
-setGlobalDispatcher(new Agent({
-  headersTimeout: 0,
-  bodyTimeout:    0,
-  connectTimeout: 10_000,
-}));
+// We previously tried `setGlobalDispatcher(new undici.Agent({headersTimeout: 0}))`
+// to keep Ollama generate calls from timing out on slow first-token
+// scenarios (cold model load, multi-page vision OCR). The npm `undici`
+// 7.x package required Node 22's webidl.util.markAsUncloneable which
+// Electron's bundled Node doesn't expose — boom, JavaScript error in
+// main on startup. Removed. Now that visionModel defaults to "" (see
+// core/storage.ts), the only Ollama calls are short LLM extractions
+// that finish well under the 5-min default. If a user opts back into
+// vision OCR and hits the timeout, we'll reintroduce this via a
+// Node-version-compatible path then.
 
 interface OllamaCfg { url: string; llmModel: string; embeddingModel: string }
 

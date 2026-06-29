@@ -26,8 +26,7 @@
   "comment": "Runtime deps in main process need real install (native modules can't be bundled). Keep this list minimal — just the native ones. UI / renderer deps stay in devDependencies because Vite bundles them.",
   "dependencies": {
     "@llamaindex/liteparse": "^2.0.8",
-    "better-sqlite3-multiple-ciphers": "^11.7.0",
-    "undici": "^8.5.0"
+    "better-sqlite3-multiple-ciphers": "^11.7.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
