@@ -90,7 +90,14 @@ export const DEFAULT_SETTINGS: Settings = {
   ollamaUrl: "http://localhost:11434",
   llmModel: "qwen3:8b",
   embeddingModel: "nomic-embed-text",
-  visionModel: "qwen3-vl:8b",
+  // Vision-model OCR is OFF by default — Tesseract handles printed
+  // documents (passports, visa forms, paystubs, leases) in ~1-3s per
+  // page. Vision-model OCR is 30-90s per page and only wins on
+  // decorative scanned certificates or non-English layouts. Users
+  // who hit a document Tesseract garbles enable vision in Settings →
+  // Models and re-upload that document; the pipeline does not
+  // auto-fall-back between the two engines.
+  visionModel: "",
   pdfParser: "liteparse",
   autoFillPrompt: true,
   appLockMinutes: 5,

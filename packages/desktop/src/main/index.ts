@@ -9,10 +9,26 @@ import { promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { Agent, setGlobalDispatcher } from "undici";
 import * as vault from "./sqlite-store";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const isDev = !app.isPackaged;
+
+// Ollama generation can legitimately take >5 min for the first byte
+// when the model is cold-loading off disk or the prompt is large
+// (multi-page scanned PDF → tens of thousands of OCR tokens). Node's
+// default undici headersTimeout is 5 min, which throws
+// UND_ERR_HEADERS_TIMEOUT → TypeError: fetch failed mid-extraction
+// — observed in the wild on IMM5756 (Canadian visa form) on M1.
+// Disable headers + body timeouts entirely so every Ollama call
+// can wait as long as the model needs. Keep connectTimeout short
+// so a wrong port still fails fast.
+setGlobalDispatcher(new Agent({
+  headersTimeout: 0,
+  bodyTimeout:    0,
+  connectTimeout: 10_000,
+}));
 
 interface OllamaCfg { url: string; llmModel: string; embeddingModel: string }
 
@@ -589,13 +605,22 @@ ipcMain.handle("ollama.generate", async (_e, cfg: OllamaCfg, body: object) => {
   // think:false disables qwen3's chain-of-thought "thinking" tokens
   // which can take 5–20s of internal reasoning before the model
   // emits a single answer token. Big TTFT win; small quality cost.
-  const r = await fetch(`${cfg.url}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keep_alive: KEEP_ALIVE, think: false, ...body }),
-  });
-  if (!r.ok) throw new Error(`Ollama generate failed: ${r.status}`);
-  return r.json();
+  try {
+    const r = await fetch(`${cfg.url}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keep_alive: KEEP_ALIVE, think: false, ...body }),
+    });
+    if (!r.ok) throw new Error(`Ollama generate failed: HTTP ${r.status} ${r.statusText}`);
+    return r.json();
+  } catch (err) {
+    // Node fetch wraps low-level failures in TypeError("fetch failed")
+    // with the real reason on .cause. Surfacing it makes the renderer
+    // error toast actually useful instead of "fetch failed".
+    const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+    if (cause?.code) throw new Error(`Ollama generate failed: ${cause.code} (${cause.message ?? "no detail"})`);
+    throw err;
+  }
 });
 
 // Streaming generate. The renderer passes a requestId; we relay each

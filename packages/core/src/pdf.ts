@@ -68,20 +68,21 @@ export async function extractPdfText(
   let ocrUsed = false;
   if (ocrPages.length > 0) {
     const canvases = ocrPages.map((p) => p.canvas);
-    let ocrTexts: string[] | null = null;
-    if (opts.visionEngine) {
-      try {
-        opts.onProgress?.(`Running vision OCR on ${ocrPages.length} page${ocrPages.length === 1 ? "" : "s"}`, 0.6);
-        ocrTexts = await ocrCanvasesWithVision(canvases, opts.visionEngine, { onProgress: opts.onOcrProgress });
-      } catch (e) {
-        console.warn("[pdf] vision OCR failed; falling back to tesseract:", e);
-        ocrTexts = null;
-      }
-    }
-    if (!ocrTexts) {
-      opts.onProgress?.(`Running OCR on ${ocrPages.length} page${ocrPages.length === 1 ? "" : "s"}`, 0.6);
-      ocrTexts = await ocrCanvases(canvases, { onProgress: opts.onOcrProgress });
-    }
+    // Two paths, no automatic fallback between them. By default
+    // visionModel is empty → host returns no engine → tesseract runs
+    // (~1-3s per page on M1, handles printed forms fine). A user who
+    // hits a doc tesseract garbles must opt into vision in Settings →
+    // Models, then re-upload that doc; the host will then provide a
+    // visionEngine and this branch takes the slow-but-better path.
+    const usingVision = Boolean(opts.visionEngine);
+    opts.onProgress?.(
+      `Running ${usingVision ? "vision" : ""} OCR on ${ocrPages.length} page${ocrPages.length === 1 ? "" : "s"}`.replace("  ", " "),
+      0.6
+    );
+    const ocrTexts = usingVision
+      ? await ocrCanvasesWithVision(canvases, opts.visionEngine!, { onProgress: opts.onOcrProgress })
+      : await ocrCanvases(canvases, { onProgress: opts.onOcrProgress });
+
     for (let i = 0; i < ocrPages.length; i++) {
       pageTexts[ocrPages[i].index] = ocrTexts[i];
     }

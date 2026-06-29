@@ -80,7 +80,7 @@ export function SettingsView() {
         </Field>
         <Field
           label="Vision OCR model"
-          hint="Vision OCR can be much slower on scanned documents. Disable it to use bundled Tesseract instead."
+          hint="Off by default — Tesseract handles printed documents in ~1-3s per page. Switch to a vision model only for decorative scans or non-English forms where Tesseract output is garbled. Vision OCR takes 30-90s per page; you'll need to re-upload affected documents to re-extract with it."
         >
           <Picker
             value={settings.visionModel}
