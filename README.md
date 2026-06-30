@@ -38,6 +38,14 @@ the full product strategy. This file is the engineering README.
 
 ---
 
+## Watch the demo
+
+![OctoVault AI — animated demo](./launch-assets/gif/octovault-demo.gif)
+
+[Watch the full 60-second walkthrough on YouTube →](https://www.youtube.com/watch?v=gvRJqcld7_o)
+
+---
+
 ## Table of contents
 
 1. [Quick start](#quick-start)
