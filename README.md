@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./launch-assets/gif/octovault-demo.gif" alt="OctoVault AI — animated demo" width="720" />
+</p>
+
 # OctoVault AI
 
 > Private. Local. Yours. — your local AI vault for personal paperwork.
@@ -37,10 +41,6 @@ It's an honest WIP. Read [`OCTOVAULT_STRATEGY.md`](./OCTOVAULT_STRATEGY.md) for
 the full product strategy. This file is the engineering README.
 
 ---
-
-## Watch the demo
-
-![OctoVault AI — animated demo](./launch-assets/gif/octovault-demo.gif)
 
 [Watch the full 60-second walkthrough on YouTube →](https://www.youtube.com/watch?v=gvRJqcld7_o)
 
