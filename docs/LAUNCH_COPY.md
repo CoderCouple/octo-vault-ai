@@ -1,7 +1,7 @@
 # OctoVault — launch copy
 
 Single source of truth for every public-facing post on launch day.
-Target: **Tue 2026-06-30, 07:30 PT (Show HN first)**. Edit in place,
+Target: **Tue 2026-07-21, 07:30 PT (Show HN first)**. Edit in place,
 ship from here. Order in this doc = posting order on launch day.
 
 ---
@@ -308,7 +308,7 @@ attribute traffic per-sub. Different bodies + different URLs reduces
 Reddit's duplicate-detection weighting. **Don't post 5 in one day**
 — that's the spam signature that gets accounts shadowbanned.
 
-### r/macapps · Tue Jun 30 10:00 PT (your account)
+### r/macapps · Tue Jul 21 10:00 PT (your account)
 
 **Title:** We built a Mac-native local AI vault for personal documents (signed + notarised)
 
@@ -336,7 +336,7 @@ octovault.ai/?utm_source=reddit_macapps — feedback welcome, especially
 on the first-run flow if you don't have Ollama installed yet.
 ```
 
-### r/LocalLLaMA · Wed Jul 1 11:00 PT (your account)
+### r/LocalLLaMA · Wed Jul 22 11:00 PT (your account)
 
 **Title:** Built a consumer Mac app on qwen3:8b — retrieval notes, TTFT, what worked
 
@@ -377,7 +377,7 @@ poke at it. Free, Mac only right now. Happy to answer retrieval /
 prompt-eng questions in the thread.
 ```
 
-### r/selfhosted · Mon Jul 6 (Payal's account · skip Jul 4 weekend)
+### r/selfhosted · Fri Jul 24 (Payal's account)
 
 **Title:** Local-first alternative to NotebookLM — runs entirely on your machine
 
@@ -406,7 +406,7 @@ would love feedback from people who've used Paperless-ngx or similar
 for the comparison angle.
 ```
 
-### r/Obsidian · Wed Jul 8 (Payal's account)
+### r/Obsidian · Mon Jul 27 (Payal's account)
 
 **Title:** Built a local AI app for personal documents — how would Obsidian users want this to integrate?
 
@@ -436,7 +436,7 @@ personal use, Mac only. Genuinely asking — what would the integration
 look like for you?
 ```
 
-### r/immigration · Fri Jul 10 (aged account · ModMail first)
+### r/immigration · Wed Jul 29 (aged account · ModMail first)
 
 **Title:** Free Mac tool that keeps your I-797 / visa documents queryable and (soon) auto-fills the forms
 
