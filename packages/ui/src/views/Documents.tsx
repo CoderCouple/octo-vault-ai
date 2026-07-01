@@ -12,7 +12,6 @@ import {
   addCandidates, chunkText, fieldByKey,
   extractImageText,
   extractPdfText,
-  SELF_ENTITY_ID,
   type EmbeddingRecord, type Entity, type FieldCandidate, type StoredDocument,
 } from "@octovault/core";
 import { useAppContext } from "../context";
@@ -104,42 +103,34 @@ async function embedTasks(
   });
 }
 
-const FILE_ENTITY_STOP_WORDS = new Set([
-  "appointment", "confirmation", "passport", "visa", "employment", "letter",
-  "certificate", "latest", "new", "old", "i797", "h1b", "voe", "paystub",
-  "marriage", "birth", "death", "license", "card", "doc", "document",
-]);
-
-function titleCaseName(tokens: string[]): string | null {
-  const nameTokens = tokens
-    .map((t) => t.replace(/[^a-z]/gi, ""))
-    .filter((t) => t.length >= 2 && !FILE_ENTITY_STOP_WORDS.has(t.toLowerCase()));
-  if (nameTokens.length === 0 || nameTokens.length > 4) return null;
-  return nameTokens.map((t) => t[0].toUpperCase() + t.slice(1).toLowerCase()).join(" ");
-}
+// FILE_ENTITY_STOP_WORDS and titleCaseName were the fallback name-
+// synthesis used to invent entity names from filename tokens when no
+// known entity matched. That path is gone (see inferEntityNameFromFileName
+// below) — synthesising entities from filenames produced garbage names
+// like "Tcsservicecertificate" and split the user's real docs across
+// dozens of synthetic entities.
 
 function inferEntityNameFromFileName(fileName: string, knownEntities: Entity[]): string | null {
+  // Only match against entities that ALREADY EXIST in the vault (including
+  // SELF). The previous version skipped SELF and, when no non-self match
+  // was found, aggressively synthesised bogus entity names from dash/
+  // underscore-separated filename tokens — producing entities like
+  // "Tcsservicecertificate" (from TCS_Service_Certificate.pdf), "Vesit
+  // Transcript", "Hb Filing", etc. Every unmatched doc ended up on its
+  // own synthetic entity, so Profile + Facts + Graph appeared empty for
+  // the actual user even though the docs were saved.
+  //
+  // Fix: match against every known entity (SELF included). If none matches,
+  // return null and let the caller fall back to activeEntityId (typically
+  // SELF). Filename parsing NEVER creates new entities — only the LLM
+  // extractor, or an explicit user action, does that.
   const base = fileName.replace(/\.[^.]+$/, "");
   const lower = base.toLowerCase();
   for (const entity of knownEntities) {
-    if (entity.id === SELF_ENTITY_ID) continue;
     const tokens = entity.name.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
     if (tokens.length && tokens.every((t) => lower.includes(t))) return entity.name;
   }
-
-  const parts = base.split(/\s*[-–—]\s*/).filter(Boolean);
-  const suffix = parts.length > 1 ? titleCaseName(parts[parts.length - 1].split(/\s+/)) : null;
-  if (suffix) return suffix;
-
-  const tokens = base.split(/\s+/);
-  const leading: string[] = [];
-  for (const token of tokens) {
-    const clean = token.replace(/[^a-z]/gi, "").toLowerCase();
-    if (!clean) continue;
-    if (FILE_ENTITY_STOP_WORDS.has(clean)) break;
-    leading.push(token);
-  }
-  return titleCaseName(leading);
+  return null;
 }
 
 export function Documents() {
