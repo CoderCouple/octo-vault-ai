@@ -11,7 +11,14 @@ setPdfWorkerSrc(pdfWorkerUrl);
 // Bundled tesseract assets live in /tesseract/ (see public/tesseract/).
 // The worker.min.js is spawned in a Blob context, so it can't resolve
 // root-relative URLs — we must give fully-qualified ones.
-const tessBase = `${window.location.origin}/tesseract`;
+//
+// In dev, window.location.origin is http://localhost:5174 → clean.
+// In packaged builds, Electron loads the renderer from file:// which
+// makes window.location.origin the literal string "null" — that
+// breaks worker/WASM fetches silently. Resolve against document.baseURI
+// so the URLs come out as file:///path/to/renderer/tesseract/... in
+// prod and http://localhost:5174/tesseract/... in dev.
+const tessBase = new URL("tesseract/", document.baseURI).toString().replace(/\/$/, "");
 configureOcr({
   workerPath: `${tessBase}/worker.min.js`,
   corePath: `${tessBase}/tesseract-core-simd.wasm.js`,
